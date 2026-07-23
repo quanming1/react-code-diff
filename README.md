@@ -4,7 +4,7 @@
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6.svg)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev)
-[![Tests](https://img.shields.io/badge/Tests-67%20passed-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/Tests-78%20passed-brightgreen.svg)](#)
 
 A high-performance React component for rendering **GitHub-style code diffs** with syntax highlighting, inline word-level diff, in-diff search, collapsible context, resizable split view, and full theming support.
 
@@ -75,6 +75,157 @@ export default function App() {
     />
   )
 }
+```
+
+## How to use
+
+### View modes
+
+```tsx
+// Side-by-side (default) — drag the divider to resize
+<CodeDiff oldValue={old} newValue={new} viewMode="split" />
+
+// Unified — old and new stacked in a single column
+<CodeDiff oldValue={old} newValue={new} viewMode="unified" />
+```
+
+### Theme switching
+
+Pass `theme` directly, or wire it to state for a toggle:
+
+```tsx
+function App() {
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
+  return (
+    <>
+      <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        Toggle theme
+      </button>
+      <CodeDiff oldValue={old} newValue={new} theme={theme} />
+    </>
+  )
+}
+```
+
+### Show only changes with context
+
+`showDiffOnly` collapses long unchanged sections to a "show N hidden lines" bar, keeping only changes and `contextLines` lines around them:
+
+```tsx
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  showDiffOnly           // collapse unchanged context (default: true)
+  contextLines={5}       // show 5 lines of context around each change
+/>
+```
+
+### Inline word-level diff
+
+When `highlightInlineChanges` is on (default), modified lines highlight the exact words that changed:
+
+```tsx
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  highlightInlineChanges  // highlight added/removed words within a line
+  wrapLines               // soft-wrap long lines instead of horizontal scroll
+/>
+```
+
+### Controlled resizable split
+
+Track the divider ratio in state to persist it across renders or sync multiple views:
+
+```tsx
+const [ratio, setRatio] = useState(0.5)
+
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  viewMode="split"
+  splitRatio={ratio}
+  onSplitRatioChange={setRatio}   // called on drag end
+  resizableSplit                  // enable dragging (default: true)
+/>
+```
+
+### Search in diff
+
+The built-in search bar (toggle via the search icon in the toolbar) supports case-sensitive matching and prev/next navigation. Listen to match changes:
+
+```tsx
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  onSearchMatchChange={(match, total) => {
+    console.log(`${match ? match.rowIndex : 'none'} / ${total} matches`)
+  }}
+/>
+```
+
+### Copy buttons
+
+The toolbar ships copy buttons for old and new code. Intercept them to use a custom clipboard or track analytics:
+
+```tsx
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  onCopy={(which, text) => {
+    // return false to prevent the default clipboard write
+    // return true to skip it (you handled it)
+    trackCopy(which)
+  }}
+/>
+```
+
+### Custom toolbar
+
+Replace the entire toolbar with your own via `renderToolbar`:
+
+```tsx
+import type { ToolbarRenderProps } from 'react-code-diff'
+
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  renderToolbar={(props: ToolbarRenderProps) => (
+    <div className="my-toolbar">
+      <span>{props.fileName}</span>
+      <span>+{props.stats.additions} -{props.stats.deletions}</span>
+      <button onClick={() => props.onCopy('new')}>Copy new</button>
+    </div>
+  )}
+/>
+```
+
+`ToolbarRenderProps` exposes `fileName`, `language`, `stats`, `searchOpen`, `onToggleSearch`, `onCopy`, `copied`, `changeCount`, `onNavigateChange`, and `config`.
+
+### Line click handling
+
+```tsx
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  onLineClick={(row, index) => {
+    console.log('Clicked line', index, row.type)
+  }}
+/>
+```
+
+### Diff stats callback
+
+Get the addition/deletion counts after diff computation:
+
+```tsx
+<CodeDiff
+  oldValue={old}
+  newValue={new}
+  onDiffComputed={(stats) => {
+    console.log(`${stats.additions} additions, ${stats.deletions} deletions`)
+  }}
+/>
 ```
 
 ## Props
@@ -171,7 +322,7 @@ pnpm lint      # oxlint
 pnpm build     # tsc + vite build
 ```
 
-The three core engines — `diff-engine`, `highlight-engine`, and `segment-merger` — have full unit test coverage (67 tests) covering edge cases: empty strings, no trailing newline, CRLF, inline diff limits, context folding/expansion, search case sensitivity, token inheritance across lines, and three-way range intersection.
+The three core engines — `diff-engine`, `highlight-engine`, and `segment-merger` — have full unit test coverage (78 tests) covering edge cases: empty strings, no trailing newline, CRLF, inline diff limits, context folding/expansion, search case sensitivity, token inheritance across lines, and three-way range intersection.
 
 ## Supported Languages
 
