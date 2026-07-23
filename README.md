@@ -1,6 +1,7 @@
 # react-code-diff
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/@jiang_quan_ming/react-code-diff.svg)](https://www.npmjs.com/package/@jiang_quan_ming/react-code-diff)
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6.svg)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev)
@@ -12,20 +13,20 @@ Built on [`diff`](https://github.com/kpdecker/jsdiff) for diff computation and [
 
 ## Features
 
-- **Split & Unified views** â€” GitHub-style side-by-side or unified diff layout
-- **Syntax highlighting** â€” 40+ languages via refractor (Prism), token colors fully themeable
-- **Inline word-level diff** â€” highlights the exact words/characters that changed within a modified line
-- **In-diff search** â€” debounced search with match navigation, case-sensitivity toggle, and auto-scroll
-- **Collapsible context** â€” GitHub-style "show N hidden lines" folding with configurable context lines
-- **Change navigation** â€” jump between changed blocks with prev/next buttons
-- **Resizable split** â€” drag the divider to adjust left/right ratio (direct DOM, no re-renders during drag)
-- **Light & Dark themes** â€” GitHub Primer-inspired palettes, switch via a single prop
-- **Fully configurable** â€” deep-mergeable config covering colors, fonts, layout, icons, texts, toolbar, and diff behavior
-- **Custom toolbar** â€” render your own toolbar via the `renderToolbar` prop
-- **Copy to clipboard** â€” one-click copy of old/new code
-- **Large file protection** â€” auto-disables inline diff / highlighting above configurable char/line limits
-- **No trailing newline indicator** â€” shows `\ No newline at end of file` when appropriate
-- **TypeScript** â€” fully typed, ships types out of the box
+- **Split & Unified views** â€?GitHub-style side-by-side or unified diff layout
+- **Syntax highlighting** â€?40+ languages via refractor (Prism), token colors fully themeable
+- **Inline word-level diff** â€?highlights the exact words/characters that changed within a modified line
+- **In-diff search** â€?debounced search with match navigation, case-sensitivity toggle, and auto-scroll
+- **Collapsible context** â€?GitHub-style "show N hidden lines" folding with configurable context lines
+- **Change navigation** â€?jump between changed blocks with prev/next buttons
+- **Resizable split** â€?drag the divider to adjust left/right ratio (direct DOM, no re-renders during drag)
+- **Light & Dark themes** â€?GitHub Primer-inspired palettes, switch via a single prop
+- **Fully configurable** â€?deep-mergeable config covering colors, fonts, layout, icons, texts, toolbar, and diff behavior
+- **Custom toolbar** â€?render your own toolbar via the `renderToolbar` prop
+- **Copy to clipboard** â€?one-click copy of old/new code
+- **Large file protection** â€?auto-disables inline diff / highlighting above configurable char/line limits
+- **No trailing newline indicator** â€?shows `\ No newline at end of file` when appropriate
+- **TypeScript** â€?fully typed, ships types out of the box
 
 ## Screenshot
 
@@ -34,11 +35,18 @@ Built on [`diff`](https://github.com/kpdecker/jsdiff) for diff computation and [
 ## Installation
 
 ```bash
-npm install react-code-diff
+npm install @jiang_quan_ming/react-code-diff
 # or
-pnpm add react-code-diff
+pnpm add @jiang_quan_ming/react-code-diff
 # or
-yarn add react-code-diff
+yarn add @jiang_quan_ming/react-code-diff
+```
+
+Then import the component and its styles:
+
+```tsx
+import { CodeDiff } from '@jiang_quan_ming/react-code-diff'
+import '@jiang_quan_ming/react-code-diff/style.css'
 ```
 
 Peer dependencies: `react >= 18`, `react-dom >= 18`.
@@ -47,7 +55,8 @@ Peer dependencies: `react >= 18`, `react-dom >= 18`.
 
 ```tsx
 import { useState } from 'react'
-import { CodeDiff } from 'react-code-diff'
+import { CodeDiff } from '@jiang_quan_ming/react-code-diff'
+import '@jiang_quan_ming/react-code-diff/style.css'
 
 const OLD = `function greet(name) {
   return 'Hello, ' + name
@@ -82,10 +91,10 @@ export default function App() {
 ### View modes
 
 ```tsx
-// Side-by-side (default) â€” drag the divider to resize
+// Side-by-side (default) â€?drag the divider to resize
 <CodeDiff oldValue={old} newValue={new} viewMode="split" />
 
-// Unified â€” old and new stacked in a single column
+// Unified â€?old and new stacked in a single column
 <CodeDiff oldValue={old} newValue={new} viewMode="unified" />
 ```
 
@@ -185,7 +194,7 @@ The toolbar ships copy buttons for old and new code. Intercept them to use a cus
 Replace the entire toolbar with your own via `renderToolbar`:
 
 ```tsx
-import type { ToolbarRenderProps } from 'react-code-diff'
+import type { ToolbarRenderProps } from '@jiang_quan_ming/react-code-diff'
 
 <CodeDiff
   oldValue={old}
@@ -232,10 +241,10 @@ Get the addition/deletion counts after diff computation:
 
 | Prop | Type | Default | Description |
 |------|------|---------|-------------|
-| `oldValue` | `string` | â€” | Old code (required) |
-| `newValue` | `string` | â€” | New code (required) |
+| `oldValue` | `string` | â€?| Old code (required) |
+| `newValue` | `string` | â€?| New code (required) |
 | `language` | `string` | `'typescript'` | Language for syntax highlighting (aliases supported, e.g. `ts`, `js`, `py`) |
-| `fileName` | `string` | â€” | File name shown in the toolbar |
+| `fileName` | `string` | â€?| File name shown in the toolbar |
 | `viewMode` | `'split' \| 'unified'` | `'split'` | Diff layout mode |
 | `theme` | `'light' \| 'dark'` | `'dark'` | Color theme |
 | `showLineNumbers` | `boolean` | `true` | Show line number gutter |
@@ -244,25 +253,25 @@ Get the addition/deletion counts after diff computation:
 | `contextLines` | `number` | `3` | Context lines around each change block (used when `showDiffOnly`) |
 | `wrapLines` | `boolean` | `false` | Soft-wrap long lines |
 | `highlightInlineChanges` | `boolean` | `true` | Enable word-level inline diff on modified lines |
-| `maxHeight` | `number \| string` | â€” | Max height of the scroll area (e.g. `500`, `'70vh'`) |
+| `maxHeight` | `number \| string` | â€?| Max height of the scroll area (e.g. `500`, `'70vh'`) |
 | `resizableSplit` | `boolean` | `true` | Enable drag-to-resize in split mode |
-| `splitRatio` | `number` | `0.5` | Initial left/right ratio (0â€“1), controlled |
-| `onSplitRatioChange` | `(ratio: number) => void` | â€” | Called when the user finishes dragging the divider |
-| `config` | `PartialConfig` | â€” | Deep-merged over the default config (see below) |
-| `renderToolbar` | `(props: ToolbarRenderProps) => ReactNode` | â€” | Custom toolbar renderer |
-| `onCopy` | `(which, text) => void \| boolean` | â€” | Intercept copy; return `false` to prevent, `true` to skip default |
-| `onLineClick` | `(row, index) => void` | â€” | Called when a diff row is clicked |
-| `onSearchMatchChange` | `(match, total) => void` | â€” | Called when the active search match changes |
-| `onDiffComputed` | `(stats) => void` | â€” | Called with `{ additions, deletions }` after diff is computed |
-| `className` | `string` | â€” | Extra class on the root element |
-| `style` | `React.CSSProperties` | â€” | Inline styles on the root element |
+| `splitRatio` | `number` | `0.5` | Initial left/right ratio (0â€?), controlled |
+| `onSplitRatioChange` | `(ratio: number) => void` | â€?| Called when the user finishes dragging the divider |
+| `config` | `PartialConfig` | â€?| Deep-merged over the default config (see below) |
+| `renderToolbar` | `(props: ToolbarRenderProps) => ReactNode` | â€?| Custom toolbar renderer |
+| `onCopy` | `(which, text) => void \| boolean` | â€?| Intercept copy; return `false` to prevent, `true` to skip default |
+| `onLineClick` | `(row, index) => void` | â€?| Called when a diff row is clicked |
+| `onSearchMatchChange` | `(match, total) => void` | â€?| Called when the active search match changes |
+| `onDiffComputed` | `(stats) => void` | â€?| Called with `{ additions, deletions }` after diff is computed |
+| `className` | `string` | â€?| Extra class on the root element |
+| `style` | `React.CSSProperties` | â€?| Inline styles on the root element |
 
 ## Configuration
 
 Pass a `config` prop to override any part of the default config. Overrides are **deep-merged**, so you only need to specify what you want to change.
 
 ```tsx
-import { CodeDiff, mergeConfig } from 'react-code-diff'
+import { CodeDiff, mergeConfig } from '@jiang_quan_ming/react-code-diff'
 
 const config = mergeConfig({
   font: {
@@ -300,14 +309,14 @@ interface CodeDiffConfig {
 }
 ```
 
-Each color object covers backgrounds, added/removed colors, gutter, search highlight, collapse, toolbar, accent, and a full set of syntax token colors â€” all exposed as CSS variables at runtime.
+Each color object covers backgrounds, added/removed colors, gutter, search highlight, collapse, toolbar, accent, and a full set of syntax token colors â€?all exposed as CSS variables at runtime.
 
 ## Themes
 
 Two built-in themes ship out of the box, both GitHub-Primer-inspired:
 
-- `theme="dark"` â€” dark background (`#0d1117`)
-- `theme="light"` â€” light background (`#ffffff`)
+- `theme="dark"` â€?dark background (`#0d1117`)
+- `theme="light"` â€?light background (`#ffffff`)
 
 Switching is zero-JS-cost: the component sets CSS variables on the root element, so theme changes never re-render rows.
 
@@ -322,7 +331,54 @@ pnpm lint      # oxlint
 pnpm build     # tsc + vite build
 ```
 
-The three core engines â€” `diff-engine`, `highlight-engine`, and `segment-merger` â€” have full unit test coverage (78 tests) covering edge cases: empty strings, no trailing newline, CRLF, inline diff limits, context folding/expansion, search case sensitivity, token inheritance across lines, and three-way range intersection.
+The three core engines -- `diff-engine`, `highlight-engine`, and `segment-merger` -- have full unit test coverage (78 tests) covering edge cases: empty strings, no trailing newline, CRLF, inline diff limits, context folding/expansion, search case sensitivity, token inheritance across lines, and three-way range intersection.
+
+## Publishing to npm
+
+This project uses a separate Vite library-mode config (`vite.lib.config.ts`) to build the publishable bundle. The demo app (`vite.config.ts`) is for development only.
+
+### Build the library
+
+```bash
+pnpm build:lib
+```
+
+This runs `vite build --config vite.lib.config.ts`, which produces:
+
+- `dist/index.js` -- ESM bundle (react/react-dom/diff/lucide-react/refractor externalized)
+- `dist/style.css` -- component styles
+- `dist/*.d.ts` -- TypeScript type declarations (via `vite-plugin-dts`)
+
+### Verify the package contents
+
+```bash
+npm pack --dry-run
+```
+
+Confirm the tarball only contains `dist/`, `README.md`, `LICENSE`, and `package.json` -- no source, demo, or `node_modules`.
+
+### Publish
+
+```bash
+# Bump version in package.json first (npm version patch/minor/major)
+
+# Publish to the official npm registry
+npm publish --registry https://registry.npmjs.org/ --access public
+```
+
+> **Note:** If your default registry is set to a mirror (e.g. npmmirror), you must pass `--registry https://registry.npmjs.org/` explicitly.
+
+> **2FA:** If your npm account has two-factor authentication enabled, either pass `--otp <code>` with a 6-digit code from your authenticator app, or create a Granular Access Token with "Bypass 2FA" enabled at [npmjs.com/settings](https://www.npmjs.com/settings) -> Access Tokens -> Generate New Token.
+
+### Version bumping
+
+```bash
+npm version patch   # 1.0.0 -> 1.0.1
+npm version minor   # 1.0.0 -> 1.1.0
+npm version major   # 1.0.0 -> 2.0.0
+```
+
+Then `pnpm build:lib && npm publish --registry https://registry.npmjs.org/ --access public`.
 
 ## Supported Languages
 
