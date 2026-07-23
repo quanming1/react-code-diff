@@ -4,6 +4,7 @@ import {
   findChangeBlocks,
   buildVisibleRows,
   computeSearchMatches,
+  computePreviewSearchMatches,
 } from '../code-diff/diff-engine'
 import type { DiffRow } from '../code-diff/types'
 
@@ -368,5 +369,78 @@ describe('computeSearchMatches', () => {
     expect(matches).toHaveLength(3) // row0 left, row0 right, row1 right
     expect(matches[0].rowIndex).toBe(0)
     expect(matches[2].rowIndex).toBe(1)
+  })
+})
+
+// ============================================================
+// computePreviewSearchMatches
+// ============================================================
+
+describe('computePreviewSearchMatches', () => {
+  it('returns empty for empty query', () => {
+    expect(computePreviewSearchMatches(['hello world'], '', false)).toEqual([])
+  })
+
+  it('returns empty for empty lines array', () => {
+    expect(computePreviewSearchMatches([], 'foo', false)).toEqual([])
+  })
+
+  it('finds a single match on a single line', () => {
+    const matches = computePreviewSearchMatches(['hello world'], 'world', false)
+    expect(matches).toHaveLength(1)
+    expect(matches[0]).toEqual({ rowIndex: 0, side: 'right', start: 6, end: 11 })
+  })
+
+  it('finds multiple matches on the same line', () => {
+    const matches = computePreviewSearchMatches(['a_a_a'], 'a', false)
+    expect(matches).toHaveLength(3)
+    expect(matches[0].start).toBe(0)
+    expect(matches[1].start).toBe(2)
+    expect(matches[2].start).toBe(4)
+  })
+
+  it('finds matches across multiple lines', () => {
+    const matches = computePreviewSearchMatches(['foo bar', 'baz foo', 'qux'], 'foo', false)
+    expect(matches).toHaveLength(2)
+    expect(matches[0].rowIndex).toBe(0)
+    expect(matches[0].start).toBe(0)
+    expect(matches[1].rowIndex).toBe(1)
+    expect(matches[1].start).toBe(4)
+  })
+
+  it('is case-insensitive by default', () => {
+    const matches = computePreviewSearchMatches(['Hello HELLO'], 'hello', false)
+    expect(matches).toHaveLength(2)
+  })
+
+  it('respects caseSensitive=true', () => {
+    const matches = computePreviewSearchMatches(['Hello HELLO'], 'hello', true)
+    expect(matches).toHaveLength(0)
+  })
+
+  it('respects caseSensitive=true with correct case', () => {
+    const matches = computePreviewSearchMatches(['Hello HELLO'], 'Hello', true)
+    expect(matches).toHaveLength(1)
+    expect(matches[0].start).toBe(0)
+  })
+
+  it('always reports side as right', () => {
+    const matches = computePreviewSearchMatches(['foo foo'], 'foo', false)
+    expect(matches).toHaveLength(2)
+    expect(matches.every((m) => m.side === 'right')).toBe(true)
+  })
+
+  it('handles empty lines within the array', () => {
+    const matches = computePreviewSearchMatches(['foo', '', 'foo'], 'foo', false)
+    expect(matches).toHaveLength(2)
+    expect(matches[0].rowIndex).toBe(0)
+    expect(matches[1].rowIndex).toBe(2)
+  })
+
+  it('handles overlapping query gracefully (non-overlapping search)', () => {
+    // 'aaa' searching 'aa' should find 1 match (indexOf advances past consumed chars)
+    const matches = computePreviewSearchMatches(['aaa'], 'aa', false)
+    expect(matches).toHaveLength(1)
+    expect(matches[0]).toEqual({ rowIndex: 0, side: 'right', start: 0, end: 2 })
   })
 })
