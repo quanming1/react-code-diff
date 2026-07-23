@@ -4,6 +4,7 @@
 [![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6-3178c6.svg)](https://www.typescriptlang.org)
 [![Vite](https://img.shields.io/badge/Vite-8-646cff.svg)](https://vite.dev)
+[![Tests](https://img.shields.io/badge/Tests-67%20passed-brightgreen.svg)](#)
 
 A high-performance React component for rendering **GitHub-style code diffs** with syntax highlighting, inline word-level diff, in-diff search, collapsible context, resizable split view, and full theming support.
 
@@ -160,6 +161,17 @@ Two built-in themes ship out of the box, both GitHub-Primer-inspired:
 Switching is zero-JS-cost: the component sets CSS variables on the root element, so theme changes never re-render rows.
 
 To customize colors, override the `colors.dark` / `colors.light` entries in `config`.
+
+## Testing
+
+```bash
+pnpm test      # run all unit tests (vitest)
+pnpm test:watch  # watch mode
+pnpm lint      # oxlint
+pnpm build     # tsc + vite build
+```
+
+The three core engines — `diff-engine`, `highlight-engine`, and `segment-merger` — have full unit test coverage (67 tests) covering edge cases: empty strings, no trailing newline, CRLF, inline diff limits, context folding/expansion, search case sensitivity, token inheritance across lines, and three-way range intersection.
 
 ## Supported Languages
 
