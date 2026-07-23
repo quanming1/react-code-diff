@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type ViewMode = 'split' | 'unified'
+export type ViewMode = 'split' | 'unified' | 'preview'
 export type Theme = 'light' | 'dark'
 
 export type DiffRowType = 'context' | 'added' | 'removed' | 'modified'
@@ -236,4 +236,5 @@ export interface CodeDiffProps {
   onLineClick?: (row: DiffRow, index: number) => void
   onSearchMatchChange?: (match: SearchMatch | null, total: number) => void
   onDiffComputed?: (stats: DiffStats) => void
+  autoScrollToFirstChange?: boolean
 }

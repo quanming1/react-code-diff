@@ -1,7 +1,7 @@
 {
-  "name": "react-code-diff",
+  "name": "@jiang_quan_ming/react-code-diff",
   "private": false,
-  "version": "1.0.0",
+  "version": "1.0.6",
   "description": "A React component for rendering GitHub-style code diffs with syntax highlighting, inline diff, search, split/unified views and more.",
   "type": "module",
   "license": "MIT",
@@ -25,19 +25,38 @@
   "bugs": {
     "url": "https://github.com/quanming1/react-code-diff/issues"
   },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:lib": "vite build --config vite.lib.config.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
   "dependencies": {
     "diff": "8.0.3",
     "lucide-react": "^1.25.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
     "refractor": "5.0.0"
   },
   "devDependencies": {
@@ -48,6 +67,7 @@
     "oxlint": "^1.71.0",
     "typescript": "~6.0.2",
     "vite": "^8.1.1",
+    "vite-plugin-dts": "^5.0.3",
     "vitest": "^4.1.10"
   }
 }

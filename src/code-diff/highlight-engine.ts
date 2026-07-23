@@ -116,3 +116,18 @@ export function getTokenForLine(
   }
   return highlightLines[lineIndex] ?? []
 }
+
+const PREWARM_LANGS = [
+  ['const x: string = "hello"', 'typescript'],
+  ['const x = 1', 'javascript'],
+  ['{"k":1}', 'json'],
+  ['key: value', 'yaml'],
+  ['echo hello', 'bash'],
+  ['x = 1', 'python'],
+] as const
+
+export function prewarm() {
+  for (const [code, lang] of PREWARM_LANGS) {
+    highlightToLines(code, lang)
+  }
+}

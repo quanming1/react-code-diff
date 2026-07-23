@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect, useLayoutEffect, memo } from 'react'
 import type {
   CodeDiffProps,
   CodeDiffConfig,
@@ -10,14 +10,18 @@ import type {
   InlinePart,
   ToolbarRenderProps,
 } from './types'
-import { computeDiff, findChangeBlocks, buildVisibleRows, computeSearchMatches } from './diff-engine'
+import { computeDiff, findChangeBlocks, buildVisibleRows, computeSearchMatches, computePreviewSearchMatches } from './diff-engine'
+import type { DiffResult } from './diff-engine'
 import {
   highlightToLines,
   getTokenForLine,
 } from './highlight-engine'
 import { mergeSegments } from './segment-merger'
 import { mergeConfig, colorsToCssVars } from './config-merger'
+import { useVirtualScroll } from './virtual'
 import './CodeDiff.css'
+
+const ASYNC_DIFF_THRESHOLD = 30_000
 
 export function CodeDiff(props: CodeDiffProps) {
   const {
@@ -45,6 +49,7 @@ export function CodeDiff(props: CodeDiffProps) {
     onLineClick,
     onSearchMatchChange,
     onDiffComputed,
+    autoScrollToFirstChange = true,
   } = props
 
   const config: CodeDiffConfig = useMemo(
@@ -52,19 +57,42 @@ export function CodeDiff(props: CodeDiffProps) {
     [partialConfig]
   )
 
-  const diffResult = useMemo(
-    () =>
-      computeDiff(oldValue, newValue, {
-        inlineDiffEnabled: highlightInlineChanges,
-        inlineDiffLineLimit: config.diff.inlineDiffLineLimit,
-        inlineDiffCharLimit: config.diff.inlineDiffCharLimit,
-      }),
-    [oldValue, newValue, highlightInlineChanges, config.diff.inlineDiffLineLimit, config.diff.inlineDiffCharLimit]
+  const diffOptions = useMemo(
+    () => ({
+      inlineDiffEnabled: highlightInlineChanges,
+      inlineDiffLineLimit: config.diff.inlineDiffLineLimit,
+      inlineDiffCharLimit: config.diff.inlineDiffCharLimit,
+    }),
+    [highlightInlineChanges, config.diff.inlineDiffLineLimit, config.diff.inlineDiffCharLimit]
   )
 
+  const needsAsyncDiff = oldValue.length + newValue.length > ASYNC_DIFF_THRESHOLD
+
+  const [asyncDiff, setAsyncDiff] = useState<DiffResult | null>(null)
+
   useEffect(() => {
-    onDiffComputed?.(diffResult.stats)
-  }, [diffResult.stats, onDiffComputed])
+    if (viewMode === 'preview') return
+    if (!needsAsyncDiff) return
+    setAsyncDiff(null)
+    let cancelled = false
+    const id = setTimeout(() => {
+      if (cancelled) return
+      setAsyncDiff(computeDiff(oldValue, newValue, diffOptions))
+    }, 0)
+    return () => { cancelled = true; clearTimeout(id) }
+  }, [oldValue, newValue, needsAsyncDiff, viewMode, diffOptions])
+
+  const diffResult = useMemo<DiffResult | null>(() => {
+    if (viewMode === 'preview') return null
+    if (needsAsyncDiff) return asyncDiff
+    return computeDiff(oldValue, newValue, diffOptions)
+  }, [oldValue, newValue, needsAsyncDiff, viewMode, diffOptions, asyncDiff])
+
+  const diffReady = diffResult !== null
+
+  useEffect(() => {
+    if (diffResult) onDiffComputed?.(diffResult.stats)
+  }, [diffResult, onDiffComputed])
 
   const canHighlight = oldValue.length + newValue.length <= config.diff.highlightCharLimit
   const oldHighlight = useMemo(
@@ -82,13 +110,13 @@ export function CodeDiff(props: CodeDiffProps) {
   }, [oldValue, newValue, showDiffOnly, contextLines])
 
   const visibleRows = useMemo(
-    () => buildVisibleRows(diffResult.rows, showDiffOnly, contextLines, expandedSections),
-    [diffResult.rows, showDiffOnly, contextLines, expandedSections]
+    () => diffResult ? buildVisibleRows(diffResult.rows, showDiffOnly, contextLines, expandedSections) : [],
+    [diffResult, showDiffOnly, contextLines, expandedSections]
   )
 
   const changeBlocks = useMemo(
-    () => findChangeBlocks(diffResult.rows),
-    [diffResult.rows]
+    () => diffResult ? findChangeBlocks(diffResult.rows) : [],
+    [diffResult]
   )
 
   const [searchOpen, setSearchOpen] = useState(false)
@@ -105,9 +133,191 @@ export function CodeDiff(props: CodeDiffProps) {
     return () => clearTimeout(t)
   }, [searchQuery, config.search.debounceMs])
 
+  const previewLines = useMemo(() => {
+    if (newValue === '') return []
+    return newValue.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  }, [newValue])
+
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const internalRatio = useRef<number | null>(null)
+
+  const effectiveRatio = splitRatio ?? internalRatio.current ?? 0.5
+
+  const maxLineNumDigits = useMemo(() => {
+    let maxNum = previewLines.length
+    if (diffResult) {
+      for (const row of diffResult.rows) {
+        if (row.left?.lineNumber && row.left.lineNumber > maxNum) maxNum = row.left.lineNumber
+        if (row.right?.lineNumber && row.right.lineNumber > maxNum) maxNum = row.right.lineNumber
+      }
+    }
+    return Math.max(String(maxNum).length, 3)
+  }, [previewLines.length, diffResult])
+
+  const [containerWidth, setContainerWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const measure = () => setContainerWidth(el.clientWidth)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const contentWidth = useMemo(() => {
+    const visualLen = (s: string): number => {
+      let len = 0
+      for (let i = 0; i < s.length; i++) {
+        len = s.charCodeAt(i) === 9 ? Math.ceil((len + 1) / 4) * 4 : len + 1
+      }
+      return len
+    }
+    let maxLen = 0
+    const rows = diffReady ? diffResult?.rows : null
+    if (rows) {
+      for (const row of rows) {
+        if (row.left) maxLen = Math.max(maxLen, visualLen(row.left.content))
+        if (row.right) maxLen = Math.max(maxLen, visualLen(row.right.content))
+      }
+    } else {
+      for (const line of previewLines) maxLen = Math.max(maxLen, visualLen(line))
+    }
+    const charW = config.font.size * 0.6
+    const gutterW = (maxLineNumDigits + 2) * charW + 20
+    const codeW = maxLen * charW + config.layout.codePaddingRight + 8
+    return Math.ceil(gutterW + codeW)
+  }, [diffReady, diffResult, previewLines, maxLineNumDigits, config.font.size, config.layout.codePaddingRight])
+
+  const ROW_HEIGHT = config.font.lineHeight
+  const COLLAPSE_HEIGHT = 28
+
+  const rowHeights = useMemo(() => {
+    if (!wrapLines) {
+      if (viewMode === 'preview' || !diffReady) {
+        return previewLines.map(() => ROW_HEIGHT)
+      }
+      return visibleRows.map((dr) => (dr.kind === 'collapsed' ? COLLAPSE_HEIGHT : ROW_HEIGHT))
+    }
+
+    const charW = config.font.size * 0.6
+    const gutterW = (maxLineNumDigits + 2) * charW + 20
+    const availW = viewMode === 'split'
+      ? containerWidth * Math.min(effectiveRatio, 1 - effectiveRatio) - gutterW - config.layout.codePaddingRight
+      : containerWidth - gutterW - config.layout.codePaddingRight
+    const charsPerLine = Math.max(1, Math.floor(availW / charW))
+
+    const visualLen = (s: string): number => {
+      let len = 0
+      for (let i = 0; i < s.length; i++) {
+        len = s.charCodeAt(i) === 9 ? Math.ceil((len + 1) / 4) * 4 : len + 1
+      }
+      return len
+    }
+
+    if (viewMode === 'preview' || !diffReady) {
+      return previewLines.map((line) => Math.max(1, Math.ceil(visualLen(line) / charsPerLine)) * ROW_HEIGHT)
+    }
+    return visibleRows.map((dr) => {
+      if (dr.kind === 'collapsed') return COLLAPSE_HEIGHT
+      const content = dr.row.right?.content ?? dr.row.left?.content ?? ''
+      return Math.max(1, Math.ceil(visualLen(content) / charsPerLine)) * ROW_HEIGHT
+    })
+  }, [wrapLines, containerWidth, viewMode, diffReady, previewLines, visibleRows, ROW_HEIGHT, COLLAPSE_HEIGHT, config.font.size, config.layout.codePaddingRight, maxLineNumDigits, effectiveRatio])
+
+  const virtualEnabled = true
+  const virtual = useVirtualScroll({
+    scrollRef,
+    rowHeights,
+    enabled: virtualEnabled,
+  })
+  const scrollToIndexRef = useRef(virtual.scrollToIndex)
+  scrollToIndexRef.current = virtual.scrollToIndex
+
+  // ── Split horizontal scroll (custom scrollbar) ──
+  const leftColRef = useRef<HTMLDivElement>(null)
+  const rightColRef = useRef<HTMLDivElement>(null)
+  const [leftColW, setLeftColW] = useState(0)
+  const [rightColW, setRightColW] = useState(0)
+  const [scrollLeftL, setScrollLeftL] = useState(0)
+  const [scrollLeftR, setScrollLeftR] = useState(0)
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (leftColRef.current) setLeftColW(leftColRef.current.clientWidth)
+      if (rightColRef.current) setRightColW(rightColRef.current.clientWidth)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (leftColRef.current) ro.observe(leftColRef.current)
+    if (rightColRef.current) ro.observe(rightColRef.current)
+    return () => ro.disconnect()
+  }, [viewMode, diffReady])
+
+  useEffect(() => {
+    setScrollLeftL(0)
+    setScrollLeftR(0)
+  }, [oldValue, newValue, viewMode])
+
+  const makeThumbDrag = useCallback((isLeft: boolean) => (e: React.PointerEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const colW = isLeft ? leftColW : rightColW
+    const contentW = contentWidth
+    const maxScroll = contentW - colW
+    if (maxScroll <= 0) return
+    const trackW = colW
+    const thumbW = Math.max(20, (colW / contentW) * trackW)
+    const maxThumbLeft = trackW - thumbW
+    const startX = e.clientX
+    const startScroll = isLeft ? scrollLeftL : scrollLeftR
+    const setScroll = isLeft ? setScrollLeftL : setScrollLeftR
+
+    const onMove = (ev: PointerEvent) => {
+      const delta = ev.clientX - startX
+      const newScroll = Math.max(0, Math.min(maxScroll, startScroll + (delta / maxThumbLeft) * maxScroll))
+      setScroll(newScroll)
+    }
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+    }
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  }, [leftColW, rightColW, contentWidth, scrollLeftL, scrollLeftR])
+
+  const makeWheelHandler = useCallback((isLeft: boolean) => (e: React.WheelEvent) => {
+    const colW = isLeft ? leftColW : rightColW
+    const contentW = contentWidth
+    const maxScroll = contentW - colW
+    if (maxScroll <= 0) return
+    const delta = e.deltaX || (e.shiftKey ? e.deltaY : 0)
+    if (delta === 0) return
+    e.preventDefault()
+    const setScroll = isLeft ? setScrollLeftL : setScrollLeftR
+    setScroll(prev => Math.max(0, Math.min(maxScroll, prev + delta)))
+  }, [leftColW, rightColW, contentWidth])
+
+  const findVisibleIndex = useCallback(
+    (originalIndex: number): number => {
+      if (viewMode === 'preview' || !diffReady) return originalIndex
+      for (let i = 0; i < visibleRows.length; i++) {
+        const dr = visibleRows[i]
+        if (dr.kind === 'row' && dr.originalIndex === originalIndex) return i
+      }
+      return -1
+    },
+    [viewMode, diffReady, visibleRows],
+  )
+
   const matches = useMemo(
-    () => computeSearchMatches(diffResult.rows, debouncedQuery, caseSensitive).slice(0, config.search.maxResults),
-    [diffResult.rows, debouncedQuery, caseSensitive, config.search.maxResults]
+    () => {
+      const all = (viewMode === 'preview' || !diffReady)
+        ? computePreviewSearchMatches(previewLines, debouncedQuery, caseSensitive)
+        : computeSearchMatches(diffResult!.rows, debouncedQuery, caseSensitive)
+      return all.slice(0, config.search.maxResults)
+    },
+    [diffResult, diffReady, viewMode, previewLines, debouncedQuery, caseSensitive, config.search.maxResults]
   )
 
   useEffect(() => {
@@ -120,7 +330,19 @@ export function CodeDiff(props: CodeDiffProps) {
   }, [currentMatch, matches, onSearchMatchChange])
 
   const [currentChange, setCurrentChange] = useState(0)
-  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!autoScrollToFirstChange) return
+    if (!diffReady || viewMode === 'preview') return
+    if (changeBlocks.length === 0) return
+    const firstBlock = changeBlocks[0]
+    const vi = findVisibleIndex(firstBlock.startIndex)
+    if (vi < 0) return
+    const raf = requestAnimationFrame(() => {
+      scrollToIndexRef.current(vi, 'center')
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [autoScrollToFirstChange, diffReady, viewMode, changeBlocks, findVisibleIndex])
 
   const navigateMatch = useCallback(
     (dir: 'prev' | 'next') => {
@@ -136,13 +358,10 @@ export function CodeDiff(props: CodeDiffProps) {
 
   useEffect(() => {
     if (matches.length === 0) return
-    const el = scrollRef.current?.querySelector<HTMLElement>(
-      `[data-match-id='${currentMatch}']`
-    )
-    if (el) {
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    }
-  }, [currentMatch, matches.length])
+    const m = matches[currentMatch]
+    const vi = findVisibleIndex(m.rowIndex)
+    if (vi >= 0) scrollToIndexRef.current(vi, 'center')
+  }, [currentMatch, matches, findVisibleIndex])
 
   const navigateChange = useCallback(
     (dir: 'prev' | 'next') => {
@@ -153,14 +372,10 @@ export function CodeDiff(props: CodeDiffProps) {
           : (currentChange - 1 + changeBlocks.length) % changeBlocks.length
       setCurrentChange(next)
       const block = changeBlocks[next]
-      const el = scrollRef.current?.querySelector<HTMLElement>(
-        `[data-row-index='${block.startIndex}']`
-      )
-      if (el) {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      }
+      const vi = findVisibleIndex(block.startIndex)
+      if (vi >= 0) scrollToIndexRef.current(vi, 'center')
     },
-    [currentChange, changeBlocks]
+    [currentChange, changeBlocks, findVisibleIndex]
   )
 
   const [copied, setCopied] = useState<'old' | 'new' | null>(null)
@@ -191,12 +406,9 @@ export function CodeDiff(props: CodeDiffProps) {
   }, [])
 
   // Split drag — direct DOM manipulation, no React re-render during drag
-  const internalRatio = useRef<number | null>(null)
   const draggingRef = useRef(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
-
-  const effectiveRatio = splitRatio ?? internalRatio.current ?? 0.5
 
   // Clean up listeners on unmount
   useEffect(() => {
@@ -256,7 +468,7 @@ export function CodeDiff(props: CodeDiffProps) {
     '--cd-font-size': `${config.font.size}px`,
     '--cd-line-height': `${config.font.lineHeight}px`,
     '--cd-border-radius': `${config.layout.borderRadius}px`,
-    '--cd-gutter-min-width': config.layout.gutterMinWidth,
+    '--cd-gutter-width': `${maxLineNumDigits}ch`,
     '--cd-sign-min-width': config.layout.signMinWidth,
     '--cd-code-padding-right': `${config.layout.codePaddingRight}px`,
     '--cd-toolbar-height': `${config.layout.toolbarHeight}px`,
@@ -283,7 +495,7 @@ export function CodeDiff(props: CodeDiffProps) {
   const toolbarProps: ToolbarRenderProps = {
     fileName,
     language,
-    stats: diffResult.stats,
+    stats: diffResult?.stats ?? { additions: 0, deletions: 0 },
     searchOpen,
     onToggleSearch: () => {
       setSearchOpen((v) => !v)
@@ -314,7 +526,7 @@ export function CodeDiff(props: CodeDiffProps) {
           <Toolbar
             fileName={fileName}
             language={language}
-            stats={diffResult.stats}
+            stats={diffResult?.stats ?? { additions: 0, deletions: 0 }}
             searchOpen={searchOpen}
             onToggleSearch={toolbarProps.onToggleSearch}
             onCopy={handleCopy}
@@ -342,55 +554,111 @@ export function CodeDiff(props: CodeDiffProps) {
         />
       )}
       <div className="cd-scroll" ref={scrollRef}>
-        {diffResult.rows.length === 0 ? (
+        {viewMode === 'preview' || !diffReady ? (
+          newValue.length === 0 ? (
+            <div className="cd-empty">{config.texts.noContent}</div>
+          ) : (
+            <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
+              <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translateY(${virtual.offsetY}px)` }}>
+                {previewLines!.slice(virtual.startIndex, virtual.endIndex).map((line, i) => {
+                  const idx = virtual.startIndex + i
+                  return (
+                    <PreviewRow
+                      key={`preview-${idx}`}
+                      line={line}
+                      lineIndex={idx}
+                      highlightLines={newHighlight}
+                      showLineNumbers={showLineNumbers}
+                      matches={matches}
+                      currentMatch={currentMatch}
+                      onRowClick={handleRowClick}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          )
+        ) : diffResult!.rows.length === 0 ? (
           <div className="cd-empty">{config.texts.noContent}</div>
-        ) : (
-          <div className={`cd-table ${viewMode === 'split' ? 'cd-split' : 'cd-unified'}`}>
-            {visibleRows.map((dr) =>
-              dr.kind === 'collapsed' ? (
-                <div
-                  key={`collapse-${dr.sectionId}`}
-                  className="cd-collapse"
-                  onClick={() => toggleExpanded(dr.sectionId)}
-                >
-                  {config.icons.collapse}
-                  <span>{config.texts.showHidden.replace('{count}', String(dr.count))}</span>
+        ) : viewMode === 'split' ? (
+          <div className="cd-split-wrapper" style={{ height: virtual.totalHeight, position: 'relative', display: 'flex' }}>
+              <div ref={leftColRef} className="cd-split-col" style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'var(--cd-split-basis, 50%)' }} onWheel={makeWheelHandler(true)}>
+                <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translate(${-scrollLeftL}px, ${virtual.offsetY}px)` }}>
+                  {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
+                    const vi = virtual.startIndex + i
+                    return dr.kind === 'collapsed' ? (
+                      <div key={`collapse-${dr.sectionId}-${vi}`} className="cd-collapse" onClick={() => toggleExpanded(dr.sectionId)}>
+                        {config.icons.collapse}
+                        <span>{config.texts.showHidden.replace('{count}', String(dr.count))}</span>
+                      </div>
+                    ) : (
+                      <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
+                        <SideView side="left" rowType={dr.row.type} diffSide={dr.row.left} highlightLines={oldHighlight} lineNumber={dr.row.left?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
+                      </div>
+                    )
+                  })}
                 </div>
-              ) : viewMode === 'split' ? (
-                <SplitRow
-                  key={`row-${dr.originalIndex}`}
-                  row={dr.row}
-                  rowIndex={dr.originalIndex}
-                  showLineNumbers={showLineNumbers}
-                  oldHighlight={oldHighlight}
-                  newHighlight={newHighlight}
-                  matches={matches}
-                  currentMatch={currentMatch}
-                  onRowClick={handleRowClick}
-                />
-              ) : (
-                <UnifiedRow
-                  key={`row-${dr.originalIndex}`}
-                  row={dr.row}
-                  rowIndex={dr.originalIndex}
-                  showLineNumbers={showLineNumbers}
-                  oldHighlight={oldHighlight}
-                  newHighlight={newHighlight}
-                  matches={matches}
-                  currentMatch={currentMatch}
-                  onRowClick={handleRowClick}
-                />
-              )
+              </div>
+              <div ref={rightColRef} className="cd-split-col" style={{ flexGrow: 1, flexShrink: 0, flexBasis: 0 }} onWheel={makeWheelHandler(false)}>
+                <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translate(${-scrollLeftR}px, ${virtual.offsetY}px)` }}>
+                  {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
+                    const vi = virtual.startIndex + i
+                    return dr.kind === 'collapsed' ? (
+                      <div key={`collapse-${dr.sectionId}-${vi}`} style={{ height: COLLAPSE_HEIGHT }} />
+                    ) : (
+                      <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
+                        <SideView side="right" rowType={dr.row.type} diffSide={dr.row.right} highlightLines={newHighlight} lineNumber={dr.row.right?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            {resizableSplit && (
+              <div className="cd-split-handle" onPointerDown={onHandlePointerDown} />
             )}
-            {viewMode === 'split' && resizableSplit && (
-              <div
-                className="cd-split-handle"
-                onPointerDown={onHandlePointerDown}
-              />
-            )}
+          </div>
+        ) : (
+          <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translateY(${virtual.offsetY}px)` }}>
+              {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
+                const vi = virtual.startIndex + i
+                return dr.kind === 'collapsed' ? (
+                  <div key={`collapse-${dr.sectionId}-${vi}`} className="cd-collapse" onClick={() => toggleExpanded(dr.sectionId)}>
+                    {config.icons.collapse}
+                    <span>{config.texts.showHidden.replace('{count}', String(dr.count))}</span>
+                  </div>
+                ) : (
+                  <UnifiedRow key={`row-${dr.originalIndex}`} row={dr.row} rowIndex={dr.originalIndex} showLineNumbers={showLineNumbers} oldHighlight={oldHighlight} newHighlight={newHighlight} matches={matches} currentMatch={currentMatch} onRowClick={handleRowClick} />
+                )
+              })}
+            </div>
           </div>
         )}
       </div>
+      {viewMode === 'split' && diffReady && contentWidth > leftColW && leftColW > 0 && (
+        <div className="cd-hscrollbar" style={{ left: 0, width: leftColW }}>
+          <div
+            className="cd-hscrollbar-thumb"
+            style={{
+              width: `${Math.max(20, (leftColW / contentWidth) * 100)}%`,
+              left: `${(scrollLeftL / (contentWidth - leftColW)) * (100 - Math.max(20, (leftColW / contentWidth) * 100))}%`,
+            }}
+            onPointerDown={makeThumbDrag(true)}
+          />
+        </div>
+      )}
+      {viewMode === 'split' && diffReady && contentWidth > rightColW && rightColW > 0 && (
+        <div className="cd-hscrollbar" style={{ left: leftColW, width: rightColW }}>
+          <div
+            className="cd-hscrollbar-thumb"
+            style={{
+              width: `${Math.max(20, (rightColW / contentWidth) * 100)}%`,
+              left: `${(scrollLeftR / (contentWidth - rightColW)) * (100 - Math.max(20, (rightColW / contentWidth) * 100))}%`,
+            }}
+            onPointerDown={makeThumbDrag(false)}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -531,7 +799,7 @@ interface RowProps {
   onRowClick: (row: DiffRow, index: number) => void
 }
 
-function SplitRow(props: RowProps) {
+const SplitRow = memo(function SplitRow(props: RowProps) {
   const { row, rowIndex, showLineNumbers, oldHighlight, newHighlight, matches, currentMatch, onRowClick } = props
 
   return (
@@ -565,11 +833,11 @@ function SplitRow(props: RowProps) {
       />
     </div>
   )
-}
+})
 
 // --- Unified Row ---
 
-function UnifiedRow(props: RowProps) {
+const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
   const { row, rowIndex, showLineNumbers, oldHighlight, newHighlight, matches, currentMatch, onRowClick } = props
 
   if (row.type === 'modified' && row.left && row.right) {
@@ -626,7 +894,63 @@ function UnifiedRow(props: RowProps) {
       />
     </div>
   )
+})
+
+// --- Preview Row ---
+
+interface PreviewRowProps {
+  line: string
+  lineIndex: number
+  highlightLines: ReturnType<typeof highlightToLines>
+  showLineNumbers: boolean
+  matches: SearchMatch[]
+  currentMatch: number
+  onRowClick: (row: DiffRow, index: number) => void
 }
+
+const PreviewRow = memo(function PreviewRow(props: PreviewRowProps) {
+  const { line, lineIndex, highlightLines, showLineNumbers, matches, currentMatch, onRowClick } = props
+  const tokens = getTokenForLine(highlightLines, lineIndex)
+  const segments = mergeSegments(
+    line,
+    tokens,
+    [{ value: line, type: 'normal' as const }],
+    matches,
+    currentMatch,
+    'right',
+    lineIndex,
+  )
+
+  const previewRow: DiffRow = {
+    type: 'context',
+    left: null,
+    right: { lineNumber: lineIndex + 1, content: line, parts: [{ value: line, type: 'normal' }] },
+  }
+
+  return (
+    <div
+      key={`preview-${lineIndex}`}
+      className="cd-row"
+      data-type="context"
+      data-row-index={lineIndex}
+      onClick={() => onRowClick(previewRow, lineIndex)}
+    >
+      <div className="cd-side cd-side-right" style={{ flex: '1 1 100%' }}>
+        {showLineNumbers && (
+          <div className="cd-gutter">
+            <span className="cd-line-num">{lineIndex + 1}</span>
+            <span className="cd-sign">&nbsp;</span>
+          </div>
+        )}
+        <code className="cd-code">
+          {segments.map((seg, idx) => (
+            <CodeSegment key={idx} segment={seg} matchIndex={getMatchIndex(matches, lineIndex, 'right', seg)} />
+          ))}
+        </code>
+      </div>
+    </div>
+  )
+})
 
 // --- Side View ---
 
@@ -642,19 +966,18 @@ interface SideViewProps {
   currentMatch: number
 }
 
-function SideView(props: SideViewProps) {
+const SideView = memo(function SideView(props: SideViewProps) {
   const { side, rowType, diffSide, highlightLines, lineNumber, showLineNumbers, rowIndex, matches, currentMatch } = props
 
   if (!diffSide) {
     return (
-      <div className={`cd-side cd-side-${side}`}>
+      <div className={`cd-side cd-side-${side} cd-side-empty`}>
         {showLineNumbers && (
           <div className="cd-gutter">
             <span className="cd-line-num-empty">&nbsp;</span>
             <span className="cd-sign">&nbsp;</span>
           </div>
         )}
-        <code className="cd-code">&nbsp;</code>
       </div>
     )
   }
@@ -694,7 +1017,7 @@ function SideView(props: SideViewProps) {
       </code>
     </div>
   )
-}
+})
 
 function getMatchIndex(
   matches: SearchMatch[],
@@ -719,7 +1042,7 @@ interface CodeSegmentProps {
   matchIndex: number
 }
 
-function CodeSegment({ segment, matchIndex }: CodeSegmentProps) {
+const CodeSegment = memo(function CodeSegment({ segment, matchIndex }: CodeSegmentProps) {
   const classes: string[] = []
 
   if (segment.syntaxClass) {
@@ -746,6 +1069,6 @@ function CodeSegment({ segment, matchIndex }: CodeSegmentProps) {
       {segment.text}
     </span>
   )
-}
+})
 
 export type { InlinePart }

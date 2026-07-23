@@ -5,8 +5,8 @@
 body {
   margin: 0;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  background: #0d1117;
-  color: #e6edf3;
+  background: linear-gradient(135deg, #f8fafc 0%, #eef2f7 50%, #e2e8f0 100%);
+  color: #1f2328;
   min-height: 100vh;
 }
 
@@ -25,10 +25,10 @@ body {
 
 .demo-btn {
   padding: 6px 14px;
-  border: 1px solid #30363d;
+  border: 1px solid #d0d7de;
   border-radius: 6px;
-  background: #161b22;
-  color: #7d8590;
+  background: #ffffff;
+  color: #636c76;
   cursor: pointer;
   font-size: 13px;
   font-family: inherit;
@@ -36,26 +36,26 @@ body {
 }
 
 .demo-btn:hover {
-  background: #21262d;
-  color: #e6edf3;
+  background: #f3f4f6;
+  color: #1f2328;
 }
 
 .demo-btn.active {
-  background: rgba(47, 129, 247, 0.15);
-  color: #2f81f7;
-  border-color: rgba(47, 129, 247, 0.4);
+  background: rgba(9, 105, 218, 0.1);
+  color: #0969da;
+  border-color: rgba(9, 105, 218, 0.4);
 }
 
 .demo-btn-group {
   display: inline-flex;
-  border: 1px solid #30363d;
+  border: 1px solid #d0d7de;
   border-radius: 6px;
   overflow: hidden;
 }
 
 .demo-btn-group .demo-btn {
   border: none;
-  border-right: 1px solid #30363d;
+  border-right: 1px solid #d0d7de;
   border-radius: 0;
 }
 

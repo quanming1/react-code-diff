@@ -1,6 +1,7 @@
 export { CodeDiff } from './CodeDiff'
 export { defaultConfig } from './default-config'
 export { mergeConfig } from './config-merger'
+export { prewarm } from './highlight-engine'
 export type {
   CodeDiffProps,
   CodeDiffConfig,

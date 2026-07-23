@@ -311,3 +311,24 @@ export function computeSearchMatches(
 
   return matches
 }
+
+export function computePreviewSearchMatches(
+  lines: string[],
+  query: string,
+  caseSensitive: boolean
+): SearchMatch[] {
+  if (!query) return []
+  const searchStr = caseSensitive ? query : query.toLowerCase()
+  const matches: SearchMatch[] = []
+
+  for (let i = 0; i < lines.length; i++) {
+    const content = caseSensitive ? lines[i] : lines[i].toLowerCase()
+    let idx = 0
+    while ((idx = content.indexOf(searchStr, idx)) !== -1) {
+      matches.push({ rowIndex: i, side: 'right' as const, start: idx, end: idx + searchStr.length })
+      idx += searchStr.length
+    }
+  }
+
+  return matches
+}
