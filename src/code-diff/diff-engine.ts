@@ -22,7 +22,7 @@ export interface DiffOptions {
 }
 
 function normalize(text: string): { lines: string[]; noTrailingNewline: boolean } {
-  if (text === '') return { lines: [], noTrailingNewline: false }
+  if (text === '') return { lines: [], noTrailingNewline: true }
   const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   const noTrailingNewline = !normalized.endsWith('\n')
   const lines = normalized.split('\n')
@@ -86,9 +86,12 @@ export function computeDiff(oldText: string, newText: string, options: DiffOptio
   let additions = 0
   let deletions = 0
 
-  const totalLines = oldNorm.lines.length + newNorm.lines.length
+  let changedLines = 0
+  for (const ch of changes) {
+    if (ch.added || ch.removed) changedLines += ch.count
+  }
   const inlineEnabled =
-    options.inlineDiffEnabled && totalLines <= options.inlineDiffLineLimit
+    options.inlineDiffEnabled && changedLines <= options.inlineDiffLineLimit
 
   let i = 0
   while (i < changes.length) {
@@ -109,47 +112,43 @@ export function computeDiff(oldText: string, newText: string, options: DiffOptio
     } else if (change.removed && i + 1 < changes.length && changes[i + 1].added) {
       const removedLines = splitChangeValue(change.value)
       const addedLines = splitChangeValue(changes[i + 1].value)
-      const maxLen = Math.max(removedLines.length, addedLines.length)
 
-      for (let j = 0; j < maxLen; j++) {
-        const hasOld = j < removedLines.length
-        const hasNew = j < addedLines.length
-        if (hasOld) oldLineNum++
-        if (hasNew) newLineNum++
+      // Emit all removed lines first (grouped together)
+      for (let j = 0; j < removedLines.length; j++) {
+        oldLineNum++
+        const canInline =
+          inlineEnabled &&
+          j < addedLines.length &&
+          removedLines[j].length <= options.inlineDiffCharLimit &&
+          addedLines[j].length <= options.inlineDiffCharLimit
+        const inline = canInline
+          ? computeInlineDiff(removedLines[j], addedLines[j])
+          : null
+        rows.push({
+          type: 'removed',
+          left: makeSide(oldLineNum, removedLines[j], inline?.old),
+          right: null,
+        })
+        deletions++
+      }
 
-        if (hasOld && hasNew) {
-          const canInline =
-            inlineEnabled &&
-            removedLines[j].length <= options.inlineDiffCharLimit &&
-            addedLines[j].length <= options.inlineDiffCharLimit
-          const inline = canInline
-            ? computeInlineDiff(removedLines[j], addedLines[j])
-            : {
-                old: [{ value: removedLines[j], type: 'normal' as const }],
-                new: [{ value: addedLines[j], type: 'normal' as const }],
-              }
-          rows.push({
-            type: 'modified',
-            left: makeSide(oldLineNum, removedLines[j], inline.old),
-            right: makeSide(newLineNum, addedLines[j], inline.new),
-          })
-          additions++
-          deletions++
-        } else if (hasOld) {
-          rows.push({
-            type: 'removed',
-            left: makeSide(oldLineNum, removedLines[j]),
-            right: null,
-          })
-          deletions++
-        } else {
-          rows.push({
-            type: 'added',
-            left: null,
-            right: makeSide(newLineNum, addedLines[j]),
-          })
-          additions++
-        }
+      // Then emit all added lines (grouped together)
+      for (let j = 0; j < addedLines.length; j++) {
+        newLineNum++
+        const canInline =
+          inlineEnabled &&
+          j < removedLines.length &&
+          removedLines[j].length <= options.inlineDiffCharLimit &&
+          addedLines[j].length <= options.inlineDiffCharLimit
+        const inline = canInline
+          ? computeInlineDiff(removedLines[j], addedLines[j])
+          : null
+        rows.push({
+          type: 'added',
+          left: null,
+          right: makeSide(newLineNum, addedLines[j], inline?.new),
+        })
+        additions++
       }
       i += 2
     } else if (change.removed) {

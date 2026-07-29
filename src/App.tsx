@@ -3,6 +3,8 @@ import { CodeDiff } from './code-diff'
 import type { ViewMode, Theme } from './code-diff'
 import './App.css'
 import largeFile from './demo-large?raw'
+import editBefore from './demo-edit-before.txt?raw'
+import editAfter from './demo-edit-after.txt?raw'
 
 const OLD_CODE = largeFile
 
@@ -17,10 +19,21 @@ function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('unified')
   const [theme, setTheme] = useState<Theme>('light')
   const [wrapLines, setWrapLines] = useState(false)
+  const [showDiffOnly, setShowDiffOnly] = useState(true)
+  const [useEditData, setUseEditData] = useState(true)
+
+  const oldVal = useEditData ? editBefore : OLD_CODE
+  const newVal = useEditData ? editAfter : NEW_CODE
 
   return (
     <div className="demo-app">
       <div className="demo-controls">
+        <button
+          className={useEditData ? 'demo-btn active' : 'demo-btn'}
+          onClick={() => setUseEditData((v) => !v)}
+        >
+          {useEditData ? 'Edit Data' : 'Large Data'}
+        </button>
         <div className="demo-btn-group">
           <button
             className={viewMode === 'preview' ? 'demo-btn active' : 'demo-btn'}
@@ -61,19 +74,25 @@ function App() {
         >
           Wrap
         </button>
+        <button
+          className={showDiffOnly ? 'demo-btn active' : 'demo-btn'}
+          onClick={() => setShowDiffOnly((v) => !v)}
+        >
+          Diff Only
+        </button>
       </div>
 
       <CodeDiff
-        oldValue={OLD_CODE}
-        newValue={NEW_CODE}
+        oldValue={oldVal}
+        newValue={newVal}
         language="tsx"
-        fileName="SummaryDetailPage.tsx"
+        fileName={useEditData ? 'SummaryCreatePage.tsx' : 'SummaryDetailPage.tsx'}
         viewMode={viewMode}
         theme={theme}
         wrapLines={wrapLines}
-        showDiffOnly={false}
+        showDiffOnly={showDiffOnly}
         contextLines={3}
-        maxHeight="70vh"
+        style={{ flex: 1, minHeight: 0 }}
       />
     </div>
   )

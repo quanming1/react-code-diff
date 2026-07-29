@@ -1,7 +1,7 @@
 {
   "name": "@jiang_quan_ming/react-code-diff",
   "private": false,
-  "version": "1.0.6",
+  "version": "1.2.0",
   "description": "A React component for rendering GitHub-style code diffs with syntax highlighting, inline diff, search, split/unified views and more.",
   "type": "module",
   "license": "MIT",

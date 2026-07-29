@@ -161,7 +161,9 @@ const [ratio, setRatio] = useState(0.5)
 
 ### Search in diff
 
-The built-in search bar (toggle via the search icon in the toolbar) supports case-sensitive matching and prev/next navigation. Listen to match changes:
+The built-in search bar (toggle via the search icon in the toolbar) supports case-sensitive matching and prev/next navigation. After clicking or focusing a `CodeDiff`, press `Ctrl+F` (Windows/Linux) or `Command+F` (macOS) to open its search and select the current query. This shortcut also works when the toolbar or search button is hidden; when no `CodeDiff` is active, the browser's native find remains available. Press `Escape` once to clear a non-empty query, then again to close search and return focus to the diff.
+
+Listen to match changes:
 
 ```tsx
 <CodeDiff

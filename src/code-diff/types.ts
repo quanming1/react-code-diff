@@ -116,6 +116,18 @@ export interface ThemeTokenColors {
   attrName: string
   selector: string
   entity: string
+  decorator: string
+  annotation: string
+  namespace: string
+  generic: string
+  module: string
+  maybeClassName: string
+  parameter: string
+  interpolation: string
+  interpolationPunctuation: string
+  propertyAccess: string
+  scriptPunctuation: string
+  script: string
 }
 
 export interface FontConfig {
@@ -126,7 +138,6 @@ export interface FontConfig {
 
 export interface LayoutConfig {
   borderRadius: number
-  gutterMinWidth: string
   signMinWidth: string
   codePaddingRight: number
   toolbarHeight: number
@@ -136,7 +147,6 @@ export interface DiffConfig {
   inlineDiffLineLimit: number
   inlineDiffCharLimit: number
   highlightCharLimit: number
-  ignoreWhitespace: boolean
 }
 
 export interface SearchConfig {
@@ -153,17 +163,24 @@ export interface ToolbarConfig {
   showCopyOld: boolean
   showCopyNew: boolean
   showChangeNavigation: boolean
+  showWrapToggle: boolean
+  showViewModeToggle: boolean
+  showDiffOnlyToggle: boolean
 }
 
 export interface IconsConfig {
   file: ReactNode
   search: ReactNode
-  copy: ReactNode
+  copy?: ReactNode
   check: ReactNode
   chevronUp: ReactNode
   chevronDown: ReactNode
   caseSensitive: ReactNode
   collapse: ReactNode
+  wrap: ReactNode
+  split: ReactNode
+  unified: ReactNode
+  diffOnly: ReactNode
 }
 
 export interface TextsConfig {
@@ -208,6 +225,15 @@ export interface ToolbarRenderProps {
   copied: 'old' | 'new' | null
   changeCount: number
   onNavigateChange: (dir: 'prev' | 'next') => void
+  wrapLines: boolean
+  onToggleWrap: () => void
+  onSetWrapLines: (v: boolean) => void
+  viewMode: ViewMode
+  onToggleViewMode: () => void
+  onSetViewMode: (v: ViewMode) => void
+  showDiffOnly: boolean
+  onToggleDiffOnly: () => void
+  onSetShowDiffOnly: (v: boolean) => void
   config: CodeDiffConfig
 }
 

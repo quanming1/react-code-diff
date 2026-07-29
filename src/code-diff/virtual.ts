@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { RefObject } from 'react'
 
 export interface VirtualScrollResult {
@@ -6,7 +6,10 @@ export interface VirtualScrollResult {
   endIndex: number
   offsetY: number
   totalHeight: number
+  bigNumbersDelta: number
   scrollToIndex: (index: number, align?: 'center' | 'nearest') => void
+  measureRef: RefObject<HTMLDivElement | null>
+  measureRef2: RefObject<HTMLDivElement | null>
 }
 
 export function useVirtualScroll(opts: {
@@ -19,6 +22,11 @@ export function useVirtualScroll(opts: {
   const overscan = opts.overscan ?? 8
   const [scrollTop, setScrollTop] = useState(0)
   const [viewportH, setViewportH] = useState(0)
+
+  const measureRef = useRef<HTMLDivElement>(null)
+  const measureRef2 = useRef<HTMLDivElement>(null)
+  const measuredRef = useRef<Map<number, number>>(new Map())
+  const [measureVersion, setMeasureVersion] = useState(0)
 
   useEffect(() => {
     const el = scrollRef.current
@@ -45,16 +53,31 @@ export function useVirtualScroll(opts: {
 
   const total = rowHeights.length
 
+  const prevTotalRef = useRef(0)
+  useEffect(() => {
+    if (prevTotalRef.current !== total) {
+      measuredRef.current.clear()
+      setMeasureVersion(v => v + 1)
+      prevTotalRef.current = total
+    }
+  }, [total])
+
+  const effectiveHeights = useMemo(() => {
+    void measureVersion
+    if (measuredRef.current.size === 0) return rowHeights
+    return rowHeights.map((h, i) => measuredRef.current.get(i) ?? h)
+  }, [rowHeights, measureVersion])
+
   const offsets = useMemo(() => {
     const arr: number[] = new Array(total + 1)
     let acc = 0
     for (let i = 0; i < total; i++) {
       arr[i] = acc
-      acc += rowHeights[i]
+      acc += effectiveHeights[i] ?? 0
     }
     arr[total] = acc
     return arr
-  }, [rowHeights, total])
+  }, [effectiveHeights, total])
 
   const range = useMemo(() => {
     if (!enabled || total === 0) {
@@ -84,13 +107,50 @@ export function useVirtualScroll(opts: {
     return { startIndex: start, endIndex: end, offsetY: offsets[start], totalHeight }
   }, [enabled, total, offsets, scrollTop, viewportH, overscan])
 
+  useLayoutEffect(() => {
+    const container = measureRef.current
+    const container2 = measureRef2.current
+    if (!container || !enabled || total === 0) return
+
+    const children = container.children
+    const children2 = container2?.children
+    let changed = false
+
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i] as HTMLElement
+      let height = child.offsetHeight
+
+      if (children2 && i < children2.length) {
+        const child2 = children2[i] as HTMLElement
+        const h2 = child2.offsetHeight
+        const maxH = Math.max(height, h2)
+        child.style.minHeight = maxH + 'px'
+        child2.style.minHeight = maxH + 'px'
+        height = maxH
+      }
+
+      const rowIndex = range.startIndex + i
+      if (rowIndex < total) {
+        const prev = measuredRef.current.get(rowIndex)
+        if (prev !== height) {
+          measuredRef.current.set(rowIndex, height)
+          changed = true
+        }
+      }
+    }
+
+    if (changed) {
+      setMeasureVersion(v => v + 1)
+    }
+  }, [range.startIndex, range.endIndex, enabled, total])
+
   const scrollToIndex = useCallback(
     (index: number, align: 'center' | 'nearest' = 'center') => {
       const el = scrollRef.current
       if (!el) return
       const clamped = Math.max(0, Math.min(total - 1, index))
       const top = offsets[clamped] ?? 0
-      const h = rowHeights[clamped] ?? 0
+      const h = effectiveHeights[clamped] ?? rowHeights[clamped] ?? 0
       if (align === 'center') {
         el.scrollTop = top - el.clientHeight / 2 + h / 2
       } else {
@@ -103,8 +163,8 @@ export function useVirtualScroll(opts: {
         }
       }
     },
-    [scrollRef, offsets, rowHeights, total],
+    [scrollRef, offsets, effectiveHeights, rowHeights, total],
   )
 
-  return { ...range, scrollToIndex }
+  return { ...range, bigNumbersDelta: 0, scrollToIndex, measureRef, measureRef2 }
 }

@@ -9,6 +9,7 @@ import type {
   TextSegment,
   InlinePart,
   ToolbarRenderProps,
+  ViewMode,
 } from './types'
 import { computeDiff, findChangeBlocks, buildVisibleRows, computeSearchMatches, computePreviewSearchMatches } from './diff-engine'
 import type { DiffResult } from './diff-engine'
@@ -18,7 +19,14 @@ import {
 } from './highlight-engine'
 import { mergeSegments } from './segment-merger'
 import { mergeConfig, colorsToCssVars } from './config-merger'
-import { useVirtualScroll } from './virtual'
+import {
+  activateHotkeyInstance,
+  deactivateHotkeyInstance,
+  registerHotkeyInstance,
+} from './hotkey-manager'
+// Virtual scroll: V2 uses ref+rAF (no re-render per scroll pixel) + BIT O(log n)
+// To revert to V1: replace the import below with './virtual' and useVirtualScrollV2 → useVirtualScroll
+import { useVirtualScrollV2 } from './virtual-v2'
 import './CodeDiff.css'
 
 const ASYNC_DIFF_THRESHOLD = 30_000
@@ -29,13 +37,13 @@ export function CodeDiff(props: CodeDiffProps) {
     newValue,
     language = 'typescript',
     fileName,
-    viewMode = 'split',
+    viewMode: viewModeProp = 'split',
     theme = 'dark',
     showLineNumbers = true,
     showToolbar = true,
-    showDiffOnly = true,
+    showDiffOnly: showDiffOnlyProp = true,
     contextLines = 3,
-    wrapLines = false,
+    wrapLines: wrapLinesProp = false,
     highlightInlineChanges = true,
     className,
     style,
@@ -51,6 +59,25 @@ export function CodeDiff(props: CodeDiffProps) {
     onDiffComputed,
     autoScrollToFirstChange = true,
   } = props
+
+  const [internalWrap, setInternalWrap] = useState(wrapLinesProp)
+  const [internalViewMode, setInternalViewMode] = useState<ViewMode>(viewModeProp)
+  const [internalShowDiffOnly, setInternalShowDiffOnly] = useState(showDiffOnlyProp)
+
+  const viewMode = internalViewMode
+  const wrapLines = internalWrap
+  const showDiffOnly = internalShowDiffOnly
+
+  const toggleWrap = useCallback(() => setInternalWrap(v => !v), [])
+  const setWrapLines = useCallback((v: boolean) => setInternalWrap(v), [])
+  const toggleViewMode = useCallback(() => setInternalViewMode(v => v === 'split' ? 'unified' : 'split'), [])
+  const setViewMode = useCallback((v: ViewMode) => setInternalViewMode(v), [])
+  const toggleDiffOnly = useCallback(() => setInternalShowDiffOnly(v => !v), [])
+  const setShowDiffOnly = useCallback((v: boolean) => setInternalShowDiffOnly(v), [])
+
+  useEffect(() => { setInternalWrap(wrapLinesProp) }, [wrapLinesProp])
+  useEffect(() => { setInternalViewMode(viewModeProp) }, [viewModeProp])
+  useEffect(() => { setInternalShowDiffOnly(showDiffOnlyProp) }, [showDiffOnlyProp])
 
   const config: CodeDiffConfig = useMemo(
     () => mergeConfig(partialConfig),
@@ -119,11 +146,66 @@ export function CodeDiff(props: CodeDiffProps) {
     [diffResult]
   )
 
+  const rootRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const hotkeyInstanceIdRef = useRef(Symbol('CodeDiff'))
+  const searchFocusRequestRef = useRef<'select' | 'restore-root' | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [caseSensitive, setCaseSensitive] = useState(false)
   const [currentMatch, setCurrentMatch] = useState(0)
+
+  const openSearch = useCallback(() => {
+    if (searchInputRef.current) {
+      searchInputRef.current.focus()
+      searchInputRef.current.select()
+      return
+    }
+    searchFocusRequestRef.current = 'select'
+    setSearchOpen(true)
+  }, [])
+
+  const toggleSearch = useCallback(() => {
+    if (searchOpen) {
+      setSearchOpen(false)
+    } else {
+      openSearch()
+    }
+  }, [searchOpen, openSearch])
+
+  const closeSearch = useCallback(() => {
+    searchFocusRequestRef.current = 'restore-root'
+    setSearchOpen(false)
+  }, [])
+
+  useLayoutEffect(() => {
+    const request = searchFocusRequestRef.current
+    if (request === 'select' && searchOpen) {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+      searchFocusRequestRef.current = null
+    } else if (request === 'restore-root' && !searchOpen) {
+      rootRef.current?.focus()
+      searchFocusRequestRef.current = null
+    }
+  }, [searchOpen])
+
+  useEffect(() => {
+    return registerHotkeyInstance(hotkeyInstanceIdRef.current, { openSearch })
+  }, [openSearch])
+
+  useEffect(() => {
+    const instanceId = hotkeyInstanceIdRef.current
+    const onDocumentPointerDown = (event: PointerEvent) => {
+      const root = rootRef.current
+      if (root && event.target instanceof Node && !root.contains(event.target)) {
+        deactivateHotkeyInstance(instanceId)
+      }
+    }
+    document.addEventListener('pointerdown', onDocumentPointerDown)
+    return () => document.removeEventListener('pointerdown', onDocumentPointerDown)
+  }, [])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -155,10 +237,14 @@ export function CodeDiff(props: CodeDiffProps) {
   }, [previewLines.length, diffResult])
 
   const [containerWidth, setContainerWidth] = useState(0)
+  const [scrollClientHeight, setScrollClientHeight] = useState(0)
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
-    const measure = () => setContainerWidth(el.clientWidth)
+    const measure = () => {
+      setContainerWidth(el.clientWidth)
+      setScrollClientHeight(el.clientHeight)
+    }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
@@ -183,8 +269,8 @@ export function CodeDiff(props: CodeDiffProps) {
     } else {
       for (const line of previewLines) maxLen = Math.max(maxLen, visualLen(line))
     }
-    const charW = config.font.size * 0.6
-    const gutterW = (maxLineNumDigits + 2) * charW + 20
+    const charW = (config.font.size + 1) * 0.6
+    const gutterW = maxLineNumDigits * (config.font.size * 0.6) + 16
     const codeW = maxLen * charW + config.layout.codePaddingRight + 8
     return Math.ceil(gutterW + codeW)
   }, [diffReady, diffResult, previewLines, maxLineNumDigits, config.font.size, config.layout.codePaddingRight])
@@ -200,8 +286,8 @@ export function CodeDiff(props: CodeDiffProps) {
       return visibleRows.map((dr) => (dr.kind === 'collapsed' ? COLLAPSE_HEIGHT : ROW_HEIGHT))
     }
 
-    const charW = config.font.size * 0.6
-    const gutterW = (maxLineNumDigits + 2) * charW + 20
+    const charW = (config.font.size + 1) * 0.6
+    const gutterW = maxLineNumDigits * (config.font.size * 0.6) + 16
     const availW = viewMode === 'split'
       ? containerWidth * Math.min(effectiveRatio, 1 - effectiveRatio) - gutterW - config.layout.codePaddingRight
       : containerWidth - gutterW - config.layout.codePaddingRight
@@ -220,27 +306,33 @@ export function CodeDiff(props: CodeDiffProps) {
     }
     return visibleRows.map((dr) => {
       if (dr.kind === 'collapsed') return COLLAPSE_HEIGHT
-      const content = dr.row.right?.content ?? dr.row.left?.content ?? ''
-      return Math.max(1, Math.ceil(visualLen(content) / charsPerLine)) * ROW_HEIGHT
+      const leftLen = visualLen(dr.row.left?.content ?? '')
+      const rightLen = visualLen(dr.row.right?.content ?? '')
+      const maxLen = Math.max(leftLen, rightLen)
+      return Math.max(1, Math.ceil(maxLen / charsPerLine)) * ROW_HEIGHT
     })
   }, [wrapLines, containerWidth, viewMode, diffReady, previewLines, visibleRows, ROW_HEIGHT, COLLAPSE_HEIGHT, config.font.size, config.layout.codePaddingRight, maxLineNumDigits, effectiveRatio])
 
   const virtualEnabled = true
-  const virtual = useVirtualScroll({
+  const virtual = useVirtualScrollV2({
     scrollRef,
     rowHeights,
+    defaultLineHeight: ROW_HEIGHT,
     enabled: virtualEnabled,
   })
   const scrollToIndexRef = useRef(virtual.scrollToIndex)
   scrollToIndexRef.current = virtual.scrollToIndex
+  // bigNumbersDelta: 0 for V1, reduces transform magnitude for large docs in V2
+  const bigNumbersDelta = virtual.bigNumbersDelta
+
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null)
 
   // ── Split horizontal scroll (custom scrollbar) ──
   const leftColRef = useRef<HTMLDivElement>(null)
   const rightColRef = useRef<HTMLDivElement>(null)
   const [leftColW, setLeftColW] = useState(0)
   const [rightColW, setRightColW] = useState(0)
-  const [scrollLeftL, setScrollLeftL] = useState(0)
-  const [scrollLeftR, setScrollLeftR] = useState(0)
+  const [scrollLeft, setScrollLeft] = useState(0)
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -255,8 +347,7 @@ export function CodeDiff(props: CodeDiffProps) {
   }, [viewMode, diffReady])
 
   useEffect(() => {
-    setScrollLeftL(0)
-    setScrollLeftR(0)
+    setScrollLeft(0)
   }, [oldValue, newValue, viewMode])
 
   const makeThumbDrag = useCallback((isLeft: boolean) => (e: React.PointerEvent) => {
@@ -270,13 +361,12 @@ export function CodeDiff(props: CodeDiffProps) {
     const thumbW = Math.max(20, (colW / contentW) * trackW)
     const maxThumbLeft = trackW - thumbW
     const startX = e.clientX
-    const startScroll = isLeft ? scrollLeftL : scrollLeftR
-    const setScroll = isLeft ? setScrollLeftL : setScrollLeftR
+    const startScroll = scrollLeft
 
     const onMove = (ev: PointerEvent) => {
       const delta = ev.clientX - startX
       const newScroll = Math.max(0, Math.min(maxScroll, startScroll + (delta / maxThumbLeft) * maxScroll))
-      setScroll(newScroll)
+      setScrollLeft(newScroll)
     }
     const onUp = () => {
       document.removeEventListener('pointermove', onMove)
@@ -284,7 +374,7 @@ export function CodeDiff(props: CodeDiffProps) {
     }
     document.addEventListener('pointermove', onMove)
     document.addEventListener('pointerup', onUp)
-  }, [leftColW, rightColW, contentWidth, scrollLeftL, scrollLeftR])
+  }, [leftColW, rightColW, contentWidth, scrollLeft])
 
   const makeWheelHandler = useCallback((isLeft: boolean) => (e: React.WheelEvent) => {
     const colW = isLeft ? leftColW : rightColW
@@ -294,8 +384,7 @@ export function CodeDiff(props: CodeDiffProps) {
     const delta = e.deltaX || (e.shiftKey ? e.deltaY : 0)
     if (delta === 0) return
     e.preventDefault()
-    const setScroll = isLeft ? setScrollLeftL : setScrollLeftR
-    setScroll(prev => Math.max(0, Math.min(maxScroll, prev + delta)))
+    setScrollLeft(prev => Math.max(0, Math.min(maxScroll, prev + delta)))
   }, [leftColW, rightColW, contentWidth])
 
   const findVisibleIndex = useCallback(
@@ -331,10 +420,19 @@ export function CodeDiff(props: CodeDiffProps) {
 
   const [currentChange, setCurrentChange] = useState(0)
 
+  // ── autoScrollToFirstChange: only fires once when diff becomes ready ──
+  // (not on expand/collapse which changes visibleRows/findVisibleIndex)
+  const hasAutoScrolledRef = useRef(false)
+  useEffect(() => {
+    hasAutoScrolledRef.current = false
+  }, [oldValue, newValue])
+
   useLayoutEffect(() => {
     if (!autoScrollToFirstChange) return
     if (!diffReady || viewMode === 'preview') return
+    if (hasAutoScrolledRef.current) return
     if (changeBlocks.length === 0) return
+    hasAutoScrolledRef.current = true
     const firstBlock = changeBlocks[0]
     const vi = findVisibleIndex(firstBlock.startIndex)
     if (vi < 0) return
@@ -359,6 +457,7 @@ export function CodeDiff(props: CodeDiffProps) {
   useEffect(() => {
     if (matches.length === 0) return
     const m = matches[currentMatch]
+    if (!m) return
     const vi = findVisibleIndex(m.rowIndex)
     if (vi >= 0) scrollToIndexRef.current(vi, 'center')
   }, [currentMatch, matches, findVisibleIndex])
@@ -407,7 +506,6 @@ export function CodeDiff(props: CodeDiffProps) {
 
   // Split drag — direct DOM manipulation, no React re-render during drag
   const draggingRef = useRef(false)
-  const rootRef = useRef<HTMLDivElement>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
 
   // Clean up listeners on unmount
@@ -497,17 +595,20 @@ export function CodeDiff(props: CodeDiffProps) {
     language,
     stats: diffResult?.stats ?? { additions: 0, deletions: 0 },
     searchOpen,
-    onToggleSearch: () => {
-      setSearchOpen((v) => !v)
-      if (!searchOpen) setTimeout(() => {
-        const input = scrollRef.current?.closest('.cd-root')?.querySelector<HTMLInputElement>('.cd-search-input')
-        input?.focus()
-      }, 0)
-    },
+    onToggleSearch: toggleSearch,
     onCopy: handleCopy,
     copied,
     changeCount: changeBlocks.length,
     onNavigateChange: navigateChange,
+    wrapLines,
+    onToggleWrap: toggleWrap,
+    onSetWrapLines: setWrapLines,
+    viewMode,
+    onToggleViewMode: toggleViewMode,
+    onSetViewMode: setViewMode,
+    showDiffOnly,
+    onToggleDiffOnly: toggleDiffOnly,
+    onSetShowDiffOnly: setShowDiffOnly,
     config,
   }
 
@@ -518,6 +619,9 @@ export function CodeDiff(props: CodeDiffProps) {
       data-theme={theme}
       data-wrap={wrapLines}
       style={mergedStyle}
+      tabIndex={-1}
+      onPointerDown={() => activateHotkeyInstance(hotkeyInstanceIdRef.current)}
+      onFocus={() => activateHotkeyInstance(hotkeyInstanceIdRef.current)}
     >
       {showToolbar && (
         renderToolbar ? (
@@ -533,6 +637,12 @@ export function CodeDiff(props: CodeDiffProps) {
             copied={copied}
             changeBlocks={changeBlocks}
             onNavigateChange={navigateChange}
+            wrapLines={wrapLines}
+            onToggleWrap={toggleWrap}
+            viewMode={viewMode}
+            onToggleViewMode={toggleViewMode}
+            showDiffOnly={showDiffOnly}
+            onToggleDiffOnly={toggleDiffOnly}
             icons={config.icons}
             texts={config.texts}
             toolbarConfig={tb}
@@ -541,8 +651,10 @@ export function CodeDiff(props: CodeDiffProps) {
       )}
       {searchOpen && (
         <SearchBar
+          inputRef={searchInputRef}
           query={searchQuery}
           onQueryChange={setSearchQuery}
+          onClose={closeSearch}
           caseSensitive={caseSensitive}
           onToggleCase={() => setCaseSensitive((v) => !v)}
           matchCount={matches.length}
@@ -553,13 +665,22 @@ export function CodeDiff(props: CodeDiffProps) {
           texts={config.texts}
         />
       )}
-      <div className="cd-scroll" ref={scrollRef}>
+      <div className="cd-scroll" ref={scrollRef}
+        onMouseOver={(e) => {
+          const row = (e.target as HTMLElement).closest('[data-row-index]') as HTMLElement | null
+          if (row) {
+            const idx = Number(row.getAttribute('data-row-index'))
+            setHoveredRow(prev => prev !== idx ? idx : prev)
+          }
+        }}
+        onMouseLeave={() => setHoveredRow(null)}
+      >
         {viewMode === 'preview' || !diffReady ? (
           newValue.length === 0 ? (
             <div className="cd-empty">{config.texts.noContent}</div>
           ) : (
-            <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
-              <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translateY(${virtual.offsetY}px)` }}>
+            <div className="cd-table cd-unified" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative' }}>
+              <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translateY(${virtual.offsetY - bigNumbersDelta}px)` }}>
                 {previewLines!.slice(virtual.startIndex, virtual.endIndex).map((line, i) => {
                   const idx = virtual.startIndex + i
                   return (
@@ -581,9 +702,9 @@ export function CodeDiff(props: CodeDiffProps) {
         ) : diffResult!.rows.length === 0 ? (
           <div className="cd-empty">{config.texts.noContent}</div>
         ) : viewMode === 'split' ? (
-          <div className="cd-split-wrapper" style={{ height: virtual.totalHeight, position: 'relative', display: 'flex' }}>
+          <div className="cd-split-wrapper" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative', display: 'flex' }}>
               <div ref={leftColRef} className="cd-split-col" style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'var(--cd-split-basis, 50%)' }} onWheel={makeWheelHandler(true)}>
-                <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translate(${-scrollLeftL}px, ${virtual.offsetY}px)` }}>
+                <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translate(${-scrollLeft}px, ${virtual.offsetY - bigNumbersDelta}px)` }}>
                   {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
                     const vi = virtual.startIndex + i
                     return dr.kind === 'collapsed' ? (
@@ -592,7 +713,7 @@ export function CodeDiff(props: CodeDiffProps) {
                         <span>{config.texts.showHidden.replace('{count}', String(dr.count))}</span>
                       </div>
                     ) : (
-                      <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
+                      <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} data-hover={hoveredRow === dr.originalIndex} onMouseEnter={() => setHoveredRow(dr.originalIndex)} onMouseLeave={() => setHoveredRow(null)} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
                         <SideView side="left" rowType={dr.row.type} diffSide={dr.row.left} highlightLines={oldHighlight} lineNumber={dr.row.left?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
                       </div>
                     )
@@ -600,13 +721,13 @@ export function CodeDiff(props: CodeDiffProps) {
                 </div>
               </div>
               <div ref={rightColRef} className="cd-split-col" style={{ flexGrow: 1, flexShrink: 0, flexBasis: 0 }} onWheel={makeWheelHandler(false)}>
-                <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translate(${-scrollLeftR}px, ${virtual.offsetY}px)` }}>
+                <div ref={virtual.measureRef2} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translate(${-scrollLeft}px, ${virtual.offsetY - bigNumbersDelta}px)` }}>
                   {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
                     const vi = virtual.startIndex + i
                     return dr.kind === 'collapsed' ? (
                       <div key={`collapse-${dr.sectionId}-${vi}`} style={{ height: COLLAPSE_HEIGHT }} />
                     ) : (
-                      <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
+                      <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} data-hover={hoveredRow === dr.originalIndex} onMouseEnter={() => setHoveredRow(dr.originalIndex)} onMouseLeave={() => setHoveredRow(null)} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
                         <SideView side="right" rowType={dr.row.type} diffSide={dr.row.right} highlightLines={newHighlight} lineNumber={dr.row.right?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
                       </div>
                     )
@@ -618,8 +739,8 @@ export function CodeDiff(props: CodeDiffProps) {
             )}
           </div>
         ) : (
-          <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, width: contentWidth || undefined, transform: `translateY(${virtual.offsetY}px)` }}>
+          <div className="cd-table cd-unified" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative' }}>
+            <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translateY(${virtual.offsetY - bigNumbersDelta}px)` }}>
               {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
                 const vi = virtual.startIndex + i
                 return dr.kind === 'collapsed' ? (
@@ -635,25 +756,25 @@ export function CodeDiff(props: CodeDiffProps) {
           </div>
         )}
       </div>
-      {viewMode === 'split' && diffReady && contentWidth > leftColW && leftColW > 0 && (
+      {viewMode === 'split' && diffReady && !wrapLines && contentWidth > leftColW && leftColW > 0 && (
         <div className="cd-hscrollbar" style={{ left: 0, width: leftColW }}>
           <div
             className="cd-hscrollbar-thumb"
             style={{
               width: `${Math.max(20, (leftColW / contentWidth) * 100)}%`,
-              left: `${(scrollLeftL / (contentWidth - leftColW)) * (100 - Math.max(20, (leftColW / contentWidth) * 100))}%`,
+              left: `${(scrollLeft / (contentWidth - leftColW)) * (100 - Math.max(20, (leftColW / contentWidth) * 100))}%`,
             }}
             onPointerDown={makeThumbDrag(true)}
           />
         </div>
       )}
-      {viewMode === 'split' && diffReady && contentWidth > rightColW && rightColW > 0 && (
+      {viewMode === 'split' && diffReady && !wrapLines && contentWidth > rightColW && rightColW > 0 && (
         <div className="cd-hscrollbar" style={{ left: leftColW, width: rightColW }}>
           <div
             className="cd-hscrollbar-thumb"
             style={{
               width: `${Math.max(20, (rightColW / contentWidth) * 100)}%`,
-              left: `${(scrollLeftR / (contentWidth - rightColW)) * (100 - Math.max(20, (rightColW / contentWidth) * 100))}%`,
+              left: `${(scrollLeft / (contentWidth - rightColW)) * (100 - Math.max(20, (rightColW / contentWidth) * 100))}%`,
             }}
             onPointerDown={makeThumbDrag(false)}
           />
@@ -675,6 +796,12 @@ interface ToolbarProps {
   copied: 'old' | 'new' | null
   changeBlocks: Array<{ startIndex: number; endIndex: number }>
   onNavigateChange: (dir: 'prev' | 'next') => void
+  wrapLines: boolean
+  onToggleWrap: () => void
+  viewMode: ViewMode
+  onToggleViewMode: () => void
+  showDiffOnly: boolean
+  onToggleDiffOnly: () => void
   icons: CodeDiffConfig['icons']
   texts: CodeDiffConfig['texts']
   toolbarConfig: CodeDiffConfig['toolbar']
@@ -716,6 +843,21 @@ function Toolbar(props: ToolbarProps) {
             {props.icons.search}
           </button>
         )}
+        {tb.showDiffOnlyToggle && (
+          <button className="cd-btn" onClick={props.onToggleDiffOnly} data-active={props.showDiffOnly} title="Diff only">
+            {props.icons.diffOnly}
+          </button>
+        )}
+        {tb.showWrapToggle && (
+          <button className="cd-btn" onClick={props.onToggleWrap} data-active={props.wrapLines} title="Wrap lines">
+            {props.icons.wrap}
+          </button>
+        )}
+        {tb.showViewModeToggle && (
+          <button className="cd-btn" onClick={props.onToggleViewMode} title={props.viewMode === 'split' ? 'Switch to unified' : 'Switch to split'}>
+            {props.viewMode === 'split' ? props.icons.unified : props.icons.split}
+          </button>
+        )}
         {tb.showCopy && tb.showCopyOld && (
           <button className="cd-btn" onClick={() => props.onCopy('old')} title={props.texts.copyOld}>
             {props.copied === 'old' ? <span className="cd-copied">{props.icons.check}</span> : props.icons.copy}
@@ -734,8 +876,10 @@ function Toolbar(props: ToolbarProps) {
 // --- SearchBar ---
 
 interface SearchBarProps {
+  inputRef: React.RefObject<HTMLInputElement | null>
   query: string
   onQueryChange: (v: string) => void
+  onClose: () => void
   caseSensitive: boolean
   onToggleCase: () => void
   matchCount: number
@@ -750,6 +894,7 @@ function SearchBar(props: SearchBarProps) {
   return (
     <div className="cd-search-bar">
       <input
+        ref={props.inputRef}
         className="cd-search-input"
         type="text"
         placeholder={props.texts.searchPlaceholder}
@@ -762,7 +907,9 @@ function SearchBar(props: SearchBarProps) {
             else props.onNext()
           } else if (e.key === 'Escape') {
             e.preventDefault()
-            props.onQueryChange('')
+            e.stopPropagation()
+            if (props.query) props.onQueryChange('')
+            else props.onClose()
           }
         }}
       />
@@ -799,41 +946,7 @@ interface RowProps {
   onRowClick: (row: DiffRow, index: number) => void
 }
 
-const SplitRow = memo(function SplitRow(props: RowProps) {
-  const { row, rowIndex, showLineNumbers, oldHighlight, newHighlight, matches, currentMatch, onRowClick } = props
 
-  return (
-    <div
-      className="cd-row"
-      data-type={row.type}
-      data-row-index={rowIndex}
-      onClick={() => onRowClick(row, rowIndex)}
-    >
-      <SideView
-        side="left"
-        rowType={row.type}
-        diffSide={row.left}
-        highlightLines={oldHighlight}
-        lineNumber={row.left?.lineNumber ?? null}
-        showLineNumbers={showLineNumbers}
-        rowIndex={rowIndex}
-        matches={matches}
-        currentMatch={currentMatch}
-      />
-      <SideView
-        side="right"
-        rowType={row.type}
-        diffSide={row.right}
-        highlightLines={newHighlight}
-        lineNumber={row.right?.lineNumber ?? null}
-        showLineNumbers={showLineNumbers}
-        rowIndex={rowIndex}
-        matches={matches}
-        currentMatch={currentMatch}
-      />
-    </div>
-  )
-})
 
 // --- Unified Row ---
 
@@ -978,6 +1091,7 @@ const SideView = memo(function SideView(props: SideViewProps) {
             <span className="cd-sign">&nbsp;</span>
           </div>
         )}
+        <code className="cd-code">&nbsp;</code>
       </div>
     )
   }

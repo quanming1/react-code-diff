@@ -3,8 +3,13 @@ import jsxLang from 'refractor/jsx'
 import tsxLang from 'refractor/tsx'
 import type { FlatToken } from './types'
 
-refractor.register(jsxLang)
-refractor.register(tsxLang)
+let langsRegistered = false
+function ensureLangsRegistered() {
+  if (langsRegistered) return
+  langsRegistered = true
+  refractor.register(jsxLang)
+  refractor.register(tsxLang)
+}
 
 const LANG_ALIASES: Record<string, string> = {
   js: 'javascript',
@@ -47,6 +52,7 @@ export function resolveLanguage(lang: string): string {
 }
 
 export function isLanguageSupported(lang: string): boolean {
+  ensureLangsRegistered()
   return refractor.registered(resolveLanguage(lang))
 }
 
@@ -68,6 +74,7 @@ export function highlightToLines(
   code: string,
   language: string
 ): FlatToken[][] | null {
+  ensureLangsRegistered()
   const resolved = resolveLanguage(language)
   if (resolved === 'plaintext' || resolved === 'text') return null
   if (!refractor.registered(resolved)) return null

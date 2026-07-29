@@ -19,14 +19,13 @@ const defaultOpts = {
 // ============================================================
 
 describe('computeDiff', () => {
-  it('returns a single empty context row for two empty strings', () => {
+  it('returns 0 rows for two empty strings', () => {
     const result = computeDiff('', '', defaultOpts)
-    expect(result.rows).toHaveLength(1)
-    expect(result.rows[0].type).toBe('context')
-    expect(result.rows[0].left!.content).toBe('')
-    expect(result.rows[0].right!.content).toBe('')
+    expect(result.rows).toHaveLength(0)
     expect(result.stats.additions).toBe(0)
     expect(result.stats.deletions).toBe(0)
+    expect(result.oldNoNewline).toBe(true)
+    expect(result.newNoNewline).toBe(true)
   })
 
   it('returns all context rows when old and new are identical', () => {
@@ -77,19 +76,21 @@ describe('computeDiff', () => {
     expect(result.stats.deletions).toBe(2)
   })
 
-  it('pairs removed+added lines as modified with inline parts', () => {
+  it('emits removed+added lines separately with inline parts', () => {
     const old = 'const x = 1\n'
     const newCode = 'const x = 2\n'
     const result = computeDiff(old, newCode, defaultOpts)
-    expect(result.rows).toHaveLength(1)
-    const row = result.rows[0]
-    expect(row.type).toBe('modified')
-    expect(row.left).not.toBeNull()
-    expect(row.right).not.toBeNull()
+    expect(result.rows).toHaveLength(2)
+    const removedRow = result.rows[0]
+    const addedRow = result.rows[1]
+    expect(removedRow.type).toBe('removed')
+    expect(addedRow.type).toBe('added')
+    expect(removedRow.left).not.toBeNull()
+    expect(addedRow.right).not.toBeNull()
 
     // Inline parts should distinguish "1" vs "2"
-    const oldParts = row.left!.parts
-    const newParts = row.right!.parts
+    const oldParts = removedRow.left!.parts
+    const newParts = addedRow.right!.parts
     expect(oldParts.some((p) => p.type === 'removed')).toBe(true)
     expect(newParts.some((p) => p.type === 'added')).toBe(true)
     // Normal parts should exist (the "const x = " prefix)
@@ -104,22 +105,25 @@ describe('computeDiff', () => {
       ...defaultOpts,
       inlineDiffEnabled: false,
     })
-    const row = result.rows[0]
-    expect(row.type).toBe('modified')
-    expect(row.left!.parts.every((p) => p.type === 'normal')).toBe(true)
-    expect(row.right!.parts.every((p) => p.type === 'normal')).toBe(true)
+    const removedRow = result.rows[0]
+    expect(removedRow.type).toBe('removed')
+    expect(removedRow.left!.parts.every((p) => p.type === 'normal')).toBe(true)
+    const addedRow = result.rows[1]
+    expect(addedRow.type).toBe('added')
+    expect(addedRow.right!.parts.every((p) => p.type === 'normal')).toBe(true)
   })
 
   it('handles \r\n line endings', () => {
     const old = 'line1\r\nline2\r\n'
     const newCode = 'line1\r\nline3\r\n'
     const result = computeDiff(old, newCode, defaultOpts)
-    expect(result.rows).toHaveLength(2)
+    expect(result.rows).toHaveLength(3)
     expect(result.rows[0].type).toBe('context')
     expect(result.rows[0].left!.content).toBe('line1')
-    expect(result.rows[1].type).toBe('modified')
+    expect(result.rows[1].type).toBe('removed')
     expect(result.rows[1].left!.content).toBe('line2')
-    expect(result.rows[1].right!.content).toBe('line3')
+    expect(result.rows[2].type).toBe('added')
+    expect(result.rows[2].right!.content).toBe('line3')
   })
 
   it('marks noNewline flag when old text has no trailing newline', () => {
@@ -156,24 +160,25 @@ describe('computeDiff', () => {
     const old = 'a\nb\nc\n'
     const newCode = 'a\nx\n'
     const result = computeDiff(old, newCode, defaultOpts)
-    // b→x modified, c removed
-    const modified = result.rows.filter((r) => r.type === 'modified')
+    // b→x: removed then added, c: removed only
     const removed = result.rows.filter((r) => r.type === 'removed')
-    expect(modified.length + removed.length).toBeGreaterThanOrEqual(1)
-    expect(result.stats.deletions).toBeGreaterThanOrEqual(1)
+    const added = result.rows.filter((r) => r.type === 'added')
+    expect(removed.length).toBeGreaterThanOrEqual(2)
+    expect(added.length).toBeGreaterThanOrEqual(1)
+    expect(result.stats.deletions).toBeGreaterThanOrEqual(2)
   })
 
   it('respects inlineDiffLineLimit to disable inline diff for large inputs', () => {
     const old = 'const x = 1\n'
     const newCode = 'const x = 2\n'
-    // total lines = 2, limit = 1 → inline disabled
+    // changed lines = 2 (1 removed + 1 added), limit = 1 → inline disabled
     const result = computeDiff(old, newCode, {
       ...defaultOpts,
       inlineDiffLineLimit: 1,
     })
-    const row = result.rows[0]
-    expect(row.type).toBe('modified')
-    expect(row.left!.parts.every((p) => p.type === 'normal')).toBe(true)
+    const removedRow = result.rows[0]
+    expect(removedRow.type).toBe('removed')
+    expect(removedRow.left!.parts.every((p) => p.type === 'normal')).toBe(true)
   })
 
   it('respects inlineDiffCharLimit to disable inline diff for long lines', () => {
@@ -184,9 +189,9 @@ describe('computeDiff', () => {
       ...defaultOpts,
       inlineDiffCharLimit: 5,
     })
-    const row = result.rows[0]
-    expect(row.type).toBe('modified')
-    expect(row.left!.parts.every((p) => p.type === 'normal')).toBe(true)
+    const removedRow = result.rows[0]
+    expect(removedRow.type).toBe('removed')
+    expect(removedRow.left!.parts.every((p) => p.type === 'normal')).toBe(true)
   })
 })
 
