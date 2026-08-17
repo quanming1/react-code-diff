@@ -37,8 +37,8 @@ export function normalizeRevealRange(
   }
 }
 
-/** 区间是否覆盖某行号（range 为 null 恒 false） */
-export function isLineInReveal(range: RevealRange | null, line: number | null | undefined): boolean {
+/** 区间是否覆盖某行号（range 为 null/undefined 恒 false） */
+export function isLineInReveal(range: RevealRange | null | undefined, line: number | null | undefined): boolean {
   if (range == null || line == null) return false
   return line >= range.start && line <= range.end
 }
