@@ -6,6 +6,7 @@
 - Feature: reveal auto-expands collapsed sections (`showDiffOnly`) covering the target range before jumping; works in preview / unified / split modes
 - Fix: `virtual-v2.scrollToIndex` assignment could be clamped to 0 when the scrollable height had not committed yet (e.g. right after expanding a collapsed section) — now verifies the landed offset and retries on subsequent frames (max 10)
 - Fix: scroll containers no longer stretch to viewport height when content is shorter (B2) — table/wrapper height now equals real content height, removing the misleading blank area below short diffs (Diff Only with folded sections)
+- Fix: demo app no longer force-stretches `CodeDiff` with `flex: 1` — `flex: 0 1 auto` lets the component shrink to content height when short and scroll within the available space when tall (B2)
 
 ## 1.2.0
 
