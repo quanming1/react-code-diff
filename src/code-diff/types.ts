@@ -263,4 +263,12 @@ export interface CodeDiffProps {
   onSearchMatchChange?: (match: SearchMatch | null, total: number) => void
   onDiffComputed?: (stats: DiffStats) => void
   autoScrollToFirstChange?: boolean
+
+  // ── 行号跳转与区间高亮（B1）──
+  /** 定位与高亮：滚动到新文件第 revealLine 行（1-based），垂直居中；传 undefined 清除 */
+  revealLine?: number
+  /** 高亮区间结束行（含，1-based）；缺省时仅高亮 revealLine 单行 */
+  revealEndLine?: number
+  /** 递增触发重新定位（内容不变复用组件时递增即可） */
+  revealNonce?: number
 }

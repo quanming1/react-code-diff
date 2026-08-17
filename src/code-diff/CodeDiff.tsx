@@ -27,6 +27,14 @@ import {
 // Virtual scroll: V2 uses ref+rAF (no re-render per scroll pixel) + BIT O(log n)
 // To revert to V1: replace the import below with './virtual' and useVirtualScrollV2 → useVirtualScroll
 import { useVirtualScrollV2 } from './virtual-v2'
+import {
+  normalizeRevealRange,
+  isLineInReveal,
+  findRowIndexByLineNumber,
+  findSectionsForRange,
+  type RevealRange,
+} from './reveal'
+import { measureCharMetrics, visualWidth } from './char-metrics'
 import './CodeDiff.css'
 
 const ASYNC_DIFF_THRESHOLD = 30_000
@@ -58,6 +66,9 @@ export function CodeDiff(props: CodeDiffProps) {
     onSearchMatchChange,
     onDiffComputed,
     autoScrollToFirstChange = true,
+    revealLine,
+    revealEndLine,
+    revealNonce,
   } = props
 
   const [internalWrap, setInternalWrap] = useState(wrapLinesProp)
@@ -220,6 +231,12 @@ export function CodeDiff(props: CodeDiffProps) {
     return newValue.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   }, [newValue])
 
+  // ── 行号跳转与区间高亮（B1）：归一化区间，新文件行号 1-based ──
+  const revealRange = useMemo(
+    () => normalizeRevealRange(revealLine, revealEndLine, previewLines.length),
+    [revealLine, revealEndLine, previewLines.length]
+  )
+
   const scrollRef = useRef<HTMLDivElement>(null)
   const internalRatio = useRef<number | null>(null)
 
@@ -237,19 +254,35 @@ export function CodeDiff(props: CodeDiffProps) {
   }, [previewLines.length, diffResult])
 
   const [containerWidth, setContainerWidth] = useState(0)
-  const [scrollClientHeight, setScrollClientHeight] = useState(0)
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const measure = () => {
       setContainerWidth(el.clientWidth)
-      setScrollClientHeight(el.clientHeight)
     }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  // ── Split 双列宽实测（供 wrap 行高估算使用，C1 上移至 rowHeights 之前）──
+  const leftColRef = useRef<HTMLDivElement>(null)
+  const rightColRef = useRef<HTMLDivElement>(null)
+  const [leftColW, setLeftColW] = useState(0)
+  const [rightColW, setRightColW] = useState(0)
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (leftColRef.current) setLeftColW(leftColRef.current.clientWidth)
+      if (rightColRef.current) setRightColW(rightColRef.current.clientWidth)
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    if (leftColRef.current) ro.observe(leftColRef.current)
+    if (rightColRef.current) ro.observe(rightColRef.current)
+    return () => ro.disconnect()
+  }, [viewMode, diffReady])
 
   const contentWidth = useMemo(() => {
     const visualLen = (s: string): number => {
@@ -278,6 +311,13 @@ export function CodeDiff(props: CodeDiffProps) {
   const ROW_HEIGHT = config.font.lineHeight
   const COLLAPSE_HEIGHT = 28
 
+  // ── 精确字符度量（C1）：canvas 实测 advance，无 canvas 环境返回 null 回退近似 ──
+  // .cd-code 实际字号 = size+1（CSS calc(+1px)），行号槽字号 = size
+  const charMetrics = useMemo(
+    () => measureCharMetrics(config.font.family, config.font.size + 1, config.font.size),
+    [config.font.family, config.font.size]
+  )
+
   const rowHeights = useMemo(() => {
     if (!wrapLines) {
       if (viewMode === 'preview' || !diffReady) {
@@ -286,14 +326,9 @@ export function CodeDiff(props: CodeDiffProps) {
       return visibleRows.map((dr) => (dr.kind === 'collapsed' ? COLLAPSE_HEIGHT : ROW_HEIGHT))
     }
 
-    const charW = (config.font.size + 1) * 0.6
-    const gutterW = maxLineNumDigits * (config.font.size * 0.6) + 16
-    const availW = viewMode === 'split'
-      ? containerWidth * Math.min(effectiveRatio, 1 - effectiveRatio) - gutterW - config.layout.codePaddingRight
-      : containerWidth - gutterW - config.layout.codePaddingRight
-    const charsPerLine = Math.max(1, Math.floor(availW / charW))
-
-    const visualLen = (s: string): number => {
+    // 旧近似（回退路径，保持原行为）：等宽 advance 0.6 近似 + CJK 按 1 倍宽
+    const legacyCharW = (config.font.size + 1) * 0.6
+    const legacyVisualLen = (s: string): number => {
       let len = 0
       for (let i = 0; i < s.length; i++) {
         len = s.charCodeAt(i) === 9 ? Math.ceil((len + 1) / 4) * 4 : len + 1
@@ -301,24 +336,62 @@ export function CodeDiff(props: CodeDiffProps) {
       return len
     }
 
+    // gutter 真实占位（精确路径）：width = digits×ch + 16，padding 0 8px 共 +16（content-box）
+    const padR = config.layout.codePaddingRight
+    const gutterW = charMetrics
+      ? charMetrics.gutterCharWidth * maxLineNumDigits + 32
+      : maxLineNumDigits * (config.font.size * 0.6) + 16
+    // split 双列宽实测优先（拖动手柄后左右列宽不同），未测出时按 ratio 推算
+    const leftAvail = Math.max(1,
+      (leftColW > 0 ? leftColW : containerWidth * effectiveRatio) - gutterW - padR)
+    const rightAvail = Math.max(1,
+      (rightColW > 0 ? rightColW : containerWidth * (1 - effectiveRatio)) - gutterW - padR)
+    const unifiedAvail = Math.max(1, containerWidth - gutterW - padR)
+
     if (viewMode === 'preview' || !diffReady) {
-      return previewLines.map((line) => Math.max(1, Math.ceil(visualLen(line) / charsPerLine)) * ROW_HEIGHT)
+      if (charMetrics) {
+        return previewLines.map((line) =>
+          Math.max(1, Math.ceil(visualWidth(line, charMetrics.halfWidth, charMetrics.fullWidth) / unifiedAvail)) * ROW_HEIGHT)
+      }
+      const charsPerLine = Math.max(1, Math.floor(unifiedAvail / legacyCharW))
+      return previewLines.map((line) => Math.max(1, Math.ceil(legacyVisualLen(line) / charsPerLine)) * ROW_HEIGHT)
     }
     return visibleRows.map((dr) => {
       if (dr.kind === 'collapsed') return COLLAPSE_HEIGHT
-      const leftLen = visualLen(dr.row.left?.content ?? '')
-      const rightLen = visualLen(dr.row.right?.content ?? '')
-      const maxLen = Math.max(leftLen, rightLen)
+      const leftContent = dr.row.left?.content ?? ''
+      const rightContent = dr.row.right?.content ?? ''
+      if (charMetrics) {
+        const availL = viewMode === 'split' ? leftAvail : unifiedAvail
+        const availR = viewMode === 'split' ? rightAvail : unifiedAvail
+        const lf = visualWidth(leftContent, charMetrics.halfWidth, charMetrics.fullWidth)
+        const rf = visualWidth(rightContent, charMetrics.halfWidth, charMetrics.fullWidth)
+        return Math.max(
+          1,
+          Math.ceil(lf / availL),
+          Math.ceil(rf / availR),
+        ) * ROW_HEIGHT
+      }
+      const charsPerLine = viewMode === 'split'
+        ? Math.max(1, Math.floor(Math.min(leftAvail, rightAvail) / legacyCharW))
+        : Math.max(1, Math.floor(unifiedAvail / legacyCharW))
+      const maxLen = Math.max(legacyVisualLen(leftContent), legacyVisualLen(rightContent))
       return Math.max(1, Math.ceil(maxLen / charsPerLine)) * ROW_HEIGHT
     })
-  }, [wrapLines, containerWidth, viewMode, diffReady, previewLines, visibleRows, ROW_HEIGHT, COLLAPSE_HEIGHT, config.font.size, config.layout.codePaddingRight, maxLineNumDigits, effectiveRatio])
+  }, [wrapLines, containerWidth, leftColW, rightColW, viewMode, diffReady, previewLines, visibleRows, ROW_HEIGHT, COLLAPSE_HEIGHT, config.font.size, config.layout.codePaddingRight, maxLineNumDigits, effectiveRatio, charMetrics])
 
   const virtualEnabled = true
+  // 宽度签名：任何影响折行宽度的输入变化都作废已收敛的实测高度（C1）
+  const widthSignature = useMemo(
+    () => `${viewMode}:${wrapLines}:${containerWidth}:${leftColW}:${rightColW}:${charMetrics ? 'm' : 'f'}`,
+    [viewMode, wrapLines, containerWidth, leftColW, rightColW, charMetrics]
+  )
   const virtual = useVirtualScrollV2({
     scrollRef,
     rowHeights,
     defaultLineHeight: ROW_HEIGHT,
     enabled: virtualEnabled,
+    variableHeights: wrapLines,
+    widthSignature,
   })
   const scrollToIndexRef = useRef(virtual.scrollToIndex)
   scrollToIndexRef.current = virtual.scrollToIndex
@@ -328,23 +401,7 @@ export function CodeDiff(props: CodeDiffProps) {
   const [hoveredRow, setHoveredRow] = useState<number | null>(null)
 
   // ── Split horizontal scroll (custom scrollbar) ──
-  const leftColRef = useRef<HTMLDivElement>(null)
-  const rightColRef = useRef<HTMLDivElement>(null)
-  const [leftColW, setLeftColW] = useState(0)
-  const [rightColW, setRightColW] = useState(0)
   const [scrollLeft, setScrollLeft] = useState(0)
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      if (leftColRef.current) setLeftColW(leftColRef.current.clientWidth)
-      if (rightColRef.current) setRightColW(rightColRef.current.clientWidth)
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    if (leftColRef.current) ro.observe(leftColRef.current)
-    if (rightColRef.current) ro.observe(rightColRef.current)
-    return () => ro.disconnect()
-  }, [viewMode, diffReady])
 
   useEffect(() => {
     setScrollLeft(0)
@@ -398,6 +455,9 @@ export function CodeDiff(props: CodeDiffProps) {
     },
     [viewMode, diffReady, visibleRows],
   )
+  // reveal 延迟跳转（双 rAF）时闭包会过期，经 ref 取最新实现
+  const findVisibleIndexRef = useRef(findVisibleIndex)
+  findVisibleIndexRef.current = findVisibleIndex
 
   const matches = useMemo(
     () => {
@@ -441,6 +501,54 @@ export function CodeDiff(props: CodeDiffProps) {
     })
     return () => cancelAnimationFrame(raf)
   }, [autoScrollToFirstChange, diffReady, viewMode, changeBlocks, findVisibleIndex])
+
+  // ── reveal 定位（B1）：revealLine/revealEndLine/revealNonce 变化时滚动到目标行 ──
+  // preview 直接按行号定位；diff 视图先展开覆盖区间的折叠段，再在下一次渲染后定位
+  // （双 rAF 等 setExpandedSections 提交 + rowHeights 重建完成）。
+  const lastRevealKeyRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!revealRange) return
+    if (viewMode !== 'preview' && !diffReady) return
+    const key = `${revealRange.start}:${revealRange.end}:${revealNonce ?? 0}`
+    if (lastRevealKeyRef.current === key) return
+    lastRevealKeyRef.current = key
+
+    if (viewMode === 'preview' || !diffResult) {
+      const raf = requestAnimationFrame(() => {
+        scrollToIndexRef.current(revealRange.start - 1, 'center')
+      })
+      return () => cancelAnimationFrame(raf)
+    }
+
+    const oi = findRowIndexByLineNumber(diffResult.rows, revealRange.start)
+    if (oi < 0) return
+    const sections = findSectionsForRange(
+      diffResult.rows, showDiffOnly, contextLines, revealRange.start, revealRange.end,
+    )
+    let expanded = false
+    if (sections.length > 0) {
+      setExpandedSections(prev => {
+        if (sections.every(s => prev.has(s))) return prev
+        expanded = true
+        const next = new Set(prev)
+        sections.forEach(s => next.add(s))
+        return next
+      })
+    }
+    const jump = () => {
+      const vi = findVisibleIndexRef.current(oi)
+      if (vi >= 0) scrollToIndexRef.current(vi, 'center')
+    }
+    // 展开触发的重渲染需要一帧提交；双 rAF 兜底（未展开时一帧内即到位）
+    const raf = requestAnimationFrame(() => {
+      if (expanded) {
+        requestAnimationFrame(jump)
+      } else {
+        jump()
+      }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [revealRange, revealNonce, viewMode, diffReady, diffResult, showDiffOnly, contextLines])
 
   const navigateMatch = useCallback(
     (dir: 'prev' | 'next') => {
@@ -679,7 +787,7 @@ export function CodeDiff(props: CodeDiffProps) {
           newValue.length === 0 ? (
             <div className="cd-empty">{config.texts.noContent}</div>
           ) : (
-            <div className="cd-table cd-unified" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative' }}>
+            <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
               <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translateY(${virtual.offsetY - bigNumbersDelta}px)` }}>
                 {previewLines!.slice(virtual.startIndex, virtual.endIndex).map((line, i) => {
                   const idx = virtual.startIndex + i
@@ -693,6 +801,7 @@ export function CodeDiff(props: CodeDiffProps) {
                       matches={matches}
                       currentMatch={currentMatch}
                       onRowClick={handleRowClick}
+                      revealRange={revealRange}
                     />
                   )
                 })}
@@ -702,7 +811,7 @@ export function CodeDiff(props: CodeDiffProps) {
         ) : diffResult!.rows.length === 0 ? (
           <div className="cd-empty">{config.texts.noContent}</div>
         ) : viewMode === 'split' ? (
-          <div className="cd-split-wrapper" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative', display: 'flex' }}>
+          <div className="cd-split-wrapper" style={{ height: virtual.totalHeight, position: 'relative', display: 'flex' }}>
               <div ref={leftColRef} className="cd-split-col" style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'var(--cd-split-basis, 50%)' }} onWheel={makeWheelHandler(true)}>
                 <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translate(${-scrollLeft}px, ${virtual.offsetY - bigNumbersDelta}px)` }}>
                   {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
@@ -714,7 +823,7 @@ export function CodeDiff(props: CodeDiffProps) {
                       </div>
                     ) : (
                       <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} data-hover={hoveredRow === dr.originalIndex} onMouseEnter={() => setHoveredRow(dr.originalIndex)} onMouseLeave={() => setHoveredRow(null)} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
-                        <SideView side="left" rowType={dr.row.type} diffSide={dr.row.left} highlightLines={oldHighlight} lineNumber={dr.row.left?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
+                        <SideView side="left" rowType={dr.row.type} diffSide={dr.row.left} highlightLines={oldHighlight} lineNumber={dr.row.left?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} revealRange={revealRange} />
                       </div>
                     )
                   })}
@@ -728,7 +837,7 @@ export function CodeDiff(props: CodeDiffProps) {
                       <div key={`collapse-${dr.sectionId}-${vi}`} style={{ height: COLLAPSE_HEIGHT }} />
                     ) : (
                       <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} data-hover={hoveredRow === dr.originalIndex} onMouseEnter={() => setHoveredRow(dr.originalIndex)} onMouseLeave={() => setHoveredRow(null)} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
-                        <SideView side="right" rowType={dr.row.type} diffSide={dr.row.right} highlightLines={newHighlight} lineNumber={dr.row.right?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
+                        <SideView side="right" rowType={dr.row.type} diffSide={dr.row.right} highlightLines={newHighlight} lineNumber={dr.row.right?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} revealRange={revealRange} />
                       </div>
                     )
                   })}
@@ -739,7 +848,7 @@ export function CodeDiff(props: CodeDiffProps) {
             )}
           </div>
         ) : (
-          <div className="cd-table cd-unified" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative' }}>
+          <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
             <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translateY(${virtual.offsetY - bigNumbersDelta}px)` }}>
               {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
                 const vi = virtual.startIndex + i
@@ -749,7 +858,7 @@ export function CodeDiff(props: CodeDiffProps) {
                     <span>{config.texts.showHidden.replace('{count}', String(dr.count))}</span>
                   </div>
                 ) : (
-                  <UnifiedRow key={`row-${dr.originalIndex}`} row={dr.row} rowIndex={dr.originalIndex} showLineNumbers={showLineNumbers} oldHighlight={oldHighlight} newHighlight={newHighlight} matches={matches} currentMatch={currentMatch} onRowClick={handleRowClick} />
+                  <UnifiedRow key={`row-${dr.originalIndex}`} row={dr.row} rowIndex={dr.originalIndex} showLineNumbers={showLineNumbers} oldHighlight={oldHighlight} newHighlight={newHighlight} matches={matches} currentMatch={currentMatch} onRowClick={handleRowClick} revealRange={revealRange} />
                 )
               })}
             </div>
@@ -944,6 +1053,7 @@ interface RowProps {
   matches: SearchMatch[]
   currentMatch: number
   onRowClick: (row: DiffRow, index: number) => void
+  revealRange?: RevealRange | null
 }
 
 
@@ -951,7 +1061,7 @@ interface RowProps {
 // --- Unified Row ---
 
 const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
-  const { row, rowIndex, showLineNumbers, oldHighlight, newHighlight, matches, currentMatch, onRowClick } = props
+  const { row, rowIndex, showLineNumbers, oldHighlight, newHighlight, matches, currentMatch, onRowClick, revealRange } = props
 
   if (row.type === 'modified' && row.left && row.right) {
     return (
@@ -967,6 +1077,7 @@ const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
             rowIndex={rowIndex}
             matches={matches}
             currentMatch={currentMatch}
+            revealRange={revealRange}
           />
         </div>
         <div className="cd-row" data-type="added">
@@ -980,6 +1091,7 @@ const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
             rowIndex={rowIndex}
             matches={matches}
             currentMatch={currentMatch}
+            revealRange={revealRange}
           />
         </div>
       </>
@@ -1004,6 +1116,7 @@ const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
         rowIndex={rowIndex}
         matches={matches}
         currentMatch={currentMatch}
+        revealRange={revealRange}
       />
     </div>
   )
@@ -1019,10 +1132,11 @@ interface PreviewRowProps {
   matches: SearchMatch[]
   currentMatch: number
   onRowClick: (row: DiffRow, index: number) => void
+  revealRange?: RevealRange | null
 }
 
 const PreviewRow = memo(function PreviewRow(props: PreviewRowProps) {
-  const { line, lineIndex, highlightLines, showLineNumbers, matches, currentMatch, onRowClick } = props
+  const { line, lineIndex, highlightLines, showLineNumbers, matches, currentMatch, onRowClick, revealRange } = props
   const tokens = getTokenForLine(highlightLines, lineIndex)
   const segments = mergeSegments(
     line,
@@ -1048,7 +1162,7 @@ const PreviewRow = memo(function PreviewRow(props: PreviewRowProps) {
       data-row-index={lineIndex}
       onClick={() => onRowClick(previewRow, lineIndex)}
     >
-      <div className="cd-side cd-side-right" style={{ flex: '1 1 100%' }}>
+      <div className={`cd-side cd-side-right${isLineInReveal(revealRange, lineIndex + 1) ? ' cd-reveal-band' : ''}`} style={{ flex: '1 1 100%' }}>
         {showLineNumbers && (
           <div className="cd-gutter">
             <span className="cd-line-num">{lineIndex + 1}</span>
@@ -1077,10 +1191,11 @@ interface SideViewProps {
   rowIndex: number
   matches: SearchMatch[]
   currentMatch: number
+  revealRange?: RevealRange | null
 }
 
 const SideView = memo(function SideView(props: SideViewProps) {
-  const { side, rowType, diffSide, highlightLines, lineNumber, showLineNumbers, rowIndex, matches, currentMatch } = props
+  const { side, rowType, diffSide, highlightLines, lineNumber, showLineNumbers, rowIndex, matches, currentMatch, revealRange } = props
 
   if (!diffSide) {
     return (
@@ -1111,8 +1226,11 @@ const SideView = memo(function SideView(props: SideViewProps) {
   const sign =
     rowType === 'added' ? '+' : rowType === 'removed' ? '-' : rowType === 'modified' ? (side === 'left' ? '-' : '+') : ' '
 
+  // 高亮带只作用于新文件行（right 侧行号）；reveal 区间为新文件行号语义
+  const revealBand = side === 'right' && isLineInReveal(revealRange, lineNumber)
+
   return (
-    <div className={`cd-side cd-side-${side}`}>
+    <div className={`cd-side cd-side-${side}${revealBand ? ' cd-reveal-band' : ''}`}>
       {showLineNumbers && (
         <div className="cd-gutter">
           <span className="cd-line-num">{lineNumber ?? ''}</span>

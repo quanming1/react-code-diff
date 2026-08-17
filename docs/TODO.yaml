@@ -1,0 +1,81 @@
+# TODO.yaml —— 阶段唯一事实源（commit hook 消费）
+#
+# 状态：done / in_progress / todo
+# 规则（见 docs/PROCESS.md 六步闭环）：
+#   - feat/fix/prd/todos 提交的 scope 必须是本文件真实存在的阶段 id
+#   - 历史阶段为存量反推（git log），未建 PRD；新阶段一律先 PRD 后开发
+
+stages:
+  - id: A
+    name: 基础与性能
+    steps:
+      - id: A1
+        title: 初始发布（diff 引擎 / 语法高亮 / 搜索 / 三视图 / 主题）
+        status: done
+        date: 2026-07-23
+        modules:
+          - src/code-diff/diff-engine.ts
+          - src/code-diff/highlight-engine.ts
+          - src/code-diff/segment-merger.ts
+          - src/code-diff/CodeDiff.tsx
+        acceptance: 78 个单测全过（diff-engine / highlight-engine / segment-merger / preview-search）；npm 首发
+
+      - id: A2
+        title: 虚拟滚动 V1 + 异步 diff + split 视图重构 + 自定义滚动条
+        status: done
+        date: 2026-07-23
+        modules:
+          - src/code-diff/virtual.ts
+          - src/code-diff/CodeDiff.tsx
+        acceptance: 大文件渲染流畅；异步 diff 不阻塞首帧
+
+      - id: A3
+        title: 虚拟滚动 V2（ref+rAF）+ 前缀和 BIT + Ctrl+F 快捷键管理器 + OneLight 主题
+        status: done
+        date: 2026-07-29
+        modules:
+          - src/code-diff/virtual-v2.ts
+          - src/code-diff/prefix-sum.ts
+          - src/code-diff/hotkey-manager.ts
+        acceptance: vitest 全量通过（含 virtual-v2 / prefix-sum / hotkey-manager 新用例）
+
+  - id: B
+    name: 消费端集成能力
+    steps:
+      - id: B1
+        title: 行号跳转与区间高亮（revealLine / revealEndLine）
+        status: done
+        date: 2026-08-17
+        prd: docs/prd/PRD-B1-reveal-highlight.md
+        prd_status: 已验收
+        modules:
+          - src/code-diff/types.ts
+          - src/code-diff/reveal.ts
+          - src/code-diff/CodeDiff.tsx
+          - src/code-diff/CodeDiff.css
+        acceptance: revealLine 滚动定位到目标行并居中；revealEndLine 形成 VSCode 风格高亮带（含行号槽）；目标行位于折叠区段时自动展开；vitest 新用例 + 全量回归通过
+
+      - id: B2
+        title: 移除滚动区人工撑高（短 diff 视口空白对齐真实内容）
+        status: done
+        date: 2026-08-17
+        prd: docs/prd/PRD-B2-no-stretch.md
+        prd_status: 已验收
+        modules:
+          - src/code-diff/CodeDiff.tsx
+        acceptance: 三视图（preview/unified/split）滚动区高度=真实内容高（totalHeight<视口时不再人工撑满），行为无回归（vitest 全过 + demo 手动验证）
+
+  - id: C
+    name: 性能与度量精化
+    steps:
+      - id: C1
+        title: wrap 模式滚动性能（估算精确化 + 消除测量级联）
+        status: done
+        date: 2026-08-17
+        prd: docs/prd/PRD-C1-wrap-scroll-perf.md
+        prd_status: 评审后 approved
+        modules:
+          - src/code-diff/char-metrics.ts
+          - src/code-diff/CodeDiff.tsx
+          - src/code-diff/virtual-v2.ts
+        acceptance: wrap 首次滚动平均帧耗时不高于不换行模式的 1.5 倍（demo Large Data 实测）；已收敛行在宽度未变时不重测；vitest 全量通过

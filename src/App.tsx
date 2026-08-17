@@ -21,6 +21,8 @@ function App() {
   const [wrapLines, setWrapLines] = useState(false)
   const [showDiffOnly, setShowDiffOnly] = useState(true)
   const [useEditData, setUseEditData] = useState(true)
+  // B1 demo：跳转 100-200 行（nonce 递增可重复触发同一区间）
+  const [reveal, setReveal] = useState<{ line: number; end: number; nonce: number } | null>(null)
 
   const oldVal = useEditData ? editBefore : OLD_CODE
   const newVal = useEditData ? editAfter : NEW_CODE
@@ -80,6 +82,26 @@ function App() {
         >
           Diff Only
         </button>
+        <div className="demo-btn-group">
+          <button
+            className={reveal ? 'demo-btn active' : 'demo-btn'}
+            onClick={() => setReveal(r => ({ line: 100, end: 200, nonce: (r?.nonce ?? 0) + 1 }))}
+          >
+            跳转 100-200
+          </button>
+          <button
+            className={reveal && reveal.end === reveal.line ? 'demo-btn active' : 'demo-btn'}
+            onClick={() => setReveal(r => ({ line: 42, end: 42, nonce: (r?.nonce ?? 0) + 1 }))}
+          >
+            跳转 L42
+          </button>
+          <button
+            className="demo-btn"
+            onClick={() => setReveal(null)}
+          >
+            清除
+          </button>
+        </div>
       </div>
 
       <CodeDiff
@@ -92,7 +114,10 @@ function App() {
         wrapLines={wrapLines}
         showDiffOnly={showDiffOnly}
         contextLines={3}
-        style={{ flex: 1, minHeight: 0 }}
+        revealLine={reveal?.line}
+        revealEndLine={reveal ? reveal.end : undefined}
+        revealNonce={reveal?.nonce}
+        style={{ flex: '0 1 auto', minHeight: 0 }}
       />
     </div>
   )
