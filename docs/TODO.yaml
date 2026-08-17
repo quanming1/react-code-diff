@@ -70,7 +70,8 @@ stages:
     steps:
       - id: C1
         title: wrap 模式滚动性能（估算精确化 + 消除测量级联）
-        status: in_progress
+        status: done
+        date: 2026-08-17
         prd: docs/prd/PRD-C1-wrap-scroll-perf.md
         prd_status: 评审后 approved
         modules:
