@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 1.3.0 (2026-08-17)
+
+- Feature: line reveal & range highlight (B1) — new `revealLine` / `revealEndLine` / `revealNonce` props scroll the view to a target new-file line (centered) and paint a VSCode-style highlight band across the `[revealLine, revealEndLine]` range (line numbers bolded, 2px left accent, light/dark themes)
+- Feature: reveal auto-expands collapsed sections (`showDiffOnly`) covering the target range before jumping; works in preview / unified / split modes
+- Fix: `virtual-v2.scrollToIndex` assignment could be clamped to 0 when the scrollable height had not committed yet (e.g. right after expanding a collapsed section) — now verifies the landed offset and retries on subsequent frames (max 10)
+- Fix: scroll containers no longer stretch to viewport height when content is shorter (B2) — table/wrapper height now equals real content height, removing the misleading blank area below short diffs (Diff Only with folded sections)
+- Fix: demo app no longer force-stretches `CodeDiff` with `flex: 1` — `flex: 0 1 auto` lets the component shrink to content height when short and scroll within the available space when tall (B2)
+- Perf: wrap mode scroll performance (C1) — canvas-measured char advance (ASCII/CJK double-width via `char-metrics.ts`) replaces the `0.6` heuristic in wrap line-height estimation, gutter width and split column widths now use real measured values; first-scroll average frame time drops from 586ms to 17ms (parity with nowrap), estimate error vs converged height 0%
+- Perf: virtual-v2 skips the DOM measurement loop entirely when heights are uniform (non-wrap); measured row heights survive estimate-array rebuilds (`syncHeightsToBit`), and a width signature invalidates stale measurements on resize
 
 - Perf: wrap mode scroll performance (C1) — canvas-measured char advance (ASCII/CJK double-width via `char-metrics.ts`) replaces the `0.6` heuristic in wrap line-height estimation, gutter width and split column widths now use real measured values; first-scroll average frame time drops from 586ms to 17ms (parity with nowrap), estimate error vs converged height 0%
 - Perf: virtual-v2 skips the DOM measurement loop entirely when heights are uniform (non-wrap); measured row heights survive estimate-array rebuilds (`syncHeightsToBit`), and a width signature invalidates stale measurements on resize
