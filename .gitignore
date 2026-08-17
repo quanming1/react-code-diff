@@ -34,3 +34,4 @@ Desktop.ini
 # Test coverage
 coverage/
 .githooks/__pycache__/  
+.ftre/
