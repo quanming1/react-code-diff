@@ -6,9 +6,10 @@
 |---|---|
 | 阶段 | B1 |
 | 名称 | 行号跳转与区间高亮（revealLine / revealEndLine） |
-| 状态 | approved |
+| 状态 | 已验收 |
 | 创建日期 | 2026-08-17 |
 | 定稿日期 | 2026-08-17 |
+| 验收日期 | 2026-08-17 |
 | 关联文档 | docs/TODO.yaml 阶段 B1；AGENTS.md；消费方 ftre-desktop FileTab（revealLine/revealEndLine/revealNonce） |
 
 ## 1. 背景与目标
