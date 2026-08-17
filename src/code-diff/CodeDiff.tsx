@@ -253,13 +253,11 @@ export function CodeDiff(props: CodeDiffProps) {
   }, [previewLines.length, diffResult])
 
   const [containerWidth, setContainerWidth] = useState(0)
-  const [scrollClientHeight, setScrollClientHeight] = useState(0)
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const measure = () => {
       setContainerWidth(el.clientWidth)
-      setScrollClientHeight(el.clientHeight)
     }
     measure()
     const ro = new ResizeObserver(measure)
@@ -746,7 +744,7 @@ export function CodeDiff(props: CodeDiffProps) {
           newValue.length === 0 ? (
             <div className="cd-empty">{config.texts.noContent}</div>
           ) : (
-            <div className="cd-table cd-unified" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative' }}>
+            <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
               <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translateY(${virtual.offsetY - bigNumbersDelta}px)` }}>
                 {previewLines!.slice(virtual.startIndex, virtual.endIndex).map((line, i) => {
                   const idx = virtual.startIndex + i
@@ -770,7 +768,7 @@ export function CodeDiff(props: CodeDiffProps) {
         ) : diffResult!.rows.length === 0 ? (
           <div className="cd-empty">{config.texts.noContent}</div>
         ) : viewMode === 'split' ? (
-          <div className="cd-split-wrapper" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative', display: 'flex' }}>
+          <div className="cd-split-wrapper" style={{ height: virtual.totalHeight, position: 'relative', display: 'flex' }}>
               <div ref={leftColRef} className="cd-split-col" style={{ flexGrow: 0, flexShrink: 0, flexBasis: 'var(--cd-split-basis, 50%)' }} onWheel={makeWheelHandler(true)}>
                 <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translate(${-scrollLeft}px, ${virtual.offsetY - bigNumbersDelta}px)` }}>
                   {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
@@ -807,7 +805,7 @@ export function CodeDiff(props: CodeDiffProps) {
             )}
           </div>
         ) : (
-          <div className="cd-table cd-unified" style={{ height: Math.max(virtual.totalHeight, scrollClientHeight), position: 'relative' }}>
+          <div className="cd-table cd-unified" style={{ height: virtual.totalHeight, position: 'relative' }}>
             <div ref={virtual.measureRef} style={{ position: 'absolute', top: bigNumbersDelta, left: 0, width: '100%', minWidth: !wrapLines ? (contentWidth || undefined) : undefined, transform: `translateY(${virtual.offsetY - bigNumbersDelta}px)` }}>
               {visibleRows.slice(virtual.startIndex, virtual.endIndex).map((dr, i) => {
                 const vi = virtual.startIndex + i
