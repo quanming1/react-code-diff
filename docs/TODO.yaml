@@ -64,3 +64,17 @@ stages:
         modules:
           - src/code-diff/CodeDiff.tsx
         acceptance: 三视图（preview/unified/split）滚动区高度=真实内容高（totalHeight<视口时不再人工撑满），行为无回归（vitest 全过 + demo 手动验证）
+
+  - id: C
+    name: 性能与度量精化
+    steps:
+      - id: C1
+        title: wrap 模式滚动性能（估算精确化 + 消除测量级联）
+        status: in_progress
+        prd: docs/prd/PRD-C1-wrap-scroll-perf.md
+        prd_status: 评审后 approved
+        modules:
+          - src/code-diff/char-metrics.ts
+          - src/code-diff/CodeDiff.tsx
+          - src/code-diff/virtual-v2.ts
+        acceptance: wrap 首次滚动平均帧耗时不高于不换行模式的 1.5 倍（demo Large Data 实测）；已收敛行在宽度未变时不重测；vitest 全量通过
