@@ -44,8 +44,10 @@ stages:
     steps:
       - id: B1
         title: 行号跳转与区间高亮（revealLine / revealEndLine）
-        status: todo
+        status: in_progress
         date: 2026-08-17
+        prd: docs/prd/PRD-B1-reveal-highlight.md
+        prd_status: approved
         modules:
           - src/code-diff/types.ts
           - src/code-diff/reveal.ts
