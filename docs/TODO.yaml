@@ -57,10 +57,10 @@ stages:
 
       - id: B2
         title: 移除滚动区人工撑高（短 diff 视口空白对齐真实内容）
-        status: in_progress
+        status: done
         date: 2026-08-17
         prd: docs/prd/PRD-B2-no-stretch.md
-        prd_status: approved
+        prd_status: 已验收
         modules:
           - src/code-diff/CodeDiff.tsx
         acceptance: 三视图（preview/unified/split）滚动区高度=真实内容高（totalHeight<视口时不再人工撑满），行为无回归（vitest 全过 + demo 手动验证）
