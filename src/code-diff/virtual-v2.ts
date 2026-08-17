@@ -46,15 +46,45 @@ const EMPTY_RANGE: ScrollRange = {
 // Monaco: "IE cannot handle units above ~1,533,908 px, so every 500k bring numbers down"
 const STEP_SIZE = 500_000
 
+/**
+ * 把估算行高同步进 BIT；已实测收敛的行保留实测值（C1）。
+ * 估算数组因行集合/输入变化重建时，不被估算覆盖回退，避免重复级联。
+ * 返回 BIT 是否有实际变化（调用方据此决定是否重算可见范围）。
+ */
+export function syncHeightsToBit(
+  bit: MutablePrefixSum,
+  estimates: number[],
+  measured: Map<number, number>,
+): boolean {
+  const n = estimates.length
+  const resized = bit.size !== n
+  if (resized) bit.resize(n)
+  let changed = false
+  for (let i = 0; i < n; i++) {
+    const target = measured.get(i) ?? estimates[i]
+    if (bit.get(i) !== target) {
+      bit.set(i, target)
+      changed = true
+    }
+  }
+  return changed || resized
+}
+
 export function useVirtualScrollV2(opts: {
   scrollRef: RefObject<HTMLDivElement | null>
   rowHeights: number[]
   defaultLineHeight: number
   enabled: boolean
+  /** false（高度恒定且估算精确，如非 wrap）时跳过 DOM 测量循环 */
+  variableHeights?: boolean
+  /** 宽度签名：变化时作废已收敛的实测高度，按新宽度重测（C1） */
+  widthSignature?: string
   overscan?: number
 }): VirtualScrollV2Result {
   const { scrollRef, rowHeights, defaultLineHeight, enabled } = opts
   const overscan = opts.overscan ?? 8
+  const variableHeights = opts.variableHeights ?? true
+  const widthSignature = opts.widthSignature
 
   // ── Refs: scroll state that does NOT trigger React re-render ──
   const scrollTopRef = useRef(0)
@@ -67,14 +97,12 @@ export function useVirtualScrollV2(opts: {
   const totalRef = useRef(rowHeights.length)
   // Track if BIT needs sync (set in render, consumed in useEffect)
   const bitDirtyRef = useRef(true)
-  const prevHeightsRef = useRef<number[]>([])
 
   // Lazy-init BIT on first render only (O(n) but only once)
   if (bitRef.current === null) {
     bitRef.current = new MutablePrefixSum(rowHeights.length)
     bitRef.current.init(rowHeights)
     totalRef.current = rowHeights.length
-    prevHeightsRef.current = rowHeights
   }
 
   // Mark BIT dirty when row count changes (don't resize in render phase!)
@@ -197,41 +225,40 @@ export function useVirtualScrollV2(opts: {
   }, [scrollRef, computeRange])
 
   // ── When rowHeights change, sync BIT incrementally (not full init!) ──
+  // 已实测收敛的行（measuredHeights 有值）保留实测值，估算数组重建
+  // （如行集合变化）不把实测覆盖回估算，避免重复级联（C1）。
   useEffect(() => {
     const bit = bitRef.current
     if (!bit) return
 
-    const prev = prevHeightsRef.current
-    const n = rowHeights.length
-
-    // Resize if needed
-    if (bit.size !== n) {
-      bit.resize(n)
-    }
-
-    // Incremental sync: only update entries that actually changed
-    let changed = false
-    for (let i = 0; i < n; i++) {
-      if (prev[i] !== rowHeights[i]) {
-        bit.set(i, rowHeights[i])
-        changed = true
-      }
-    }
-    prevHeightsRef.current = rowHeights
-    totalRef.current = n
+    const changed = syncHeightsToBit(bit, rowHeights, measuredRef.current)
+    totalRef.current = rowHeights.length
     bitDirtyRef.current = false
 
     // Recompute range after BIT sync
-    if (changed || bit.size !== n) {
+    if (changed) {
       const newRange = computeRange()
       setRange(newRange)
     }
   }, [rowHeights, computeRange])
 
+  // ── 宽度签名：变化时作废实测缓存（C1）──
+  // 折行宽度变了，旧实测高度全部失效；下一次 rowHeights 同步/测量按新宽度收敛。
+  // 声明在测量 effect 之前，保证同一次提交里先清后测。
+  const lastSigRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (widthSignature == null) return
+    if (lastSigRef.current === widthSignature) return
+    lastSigRef.current = widthSignature
+    measuredRef.current.clear()
+  }, [widthSignature])
+
   // ── DOM measurement (for wrap mode variable heights) ──
   // Debounced to rAF: max 1 re-render per frame, no cascade
   // Skip writing to BIT when dirty — range may be a fallback with wrong indices
+  // 非变高模式（variableHeights=false）高度恒定且估算精确，整个测量循环跳过（C1）。
   useLayoutEffect(() => {
+    if (!variableHeights) return
     const container = measureRef.current
     const container2 = measureRef2.current
     if (!container || !enabled || totalRef.current === 0) return
@@ -250,8 +277,9 @@ export function useVirtualScrollV2(opts: {
         const child2 = children2[i] as HTMLElement
         const h2 = child2.offsetHeight
         const maxH = Math.max(height, h2)
-        child.style.minHeight = maxH + 'px'
-        child2.style.minHeight = maxH + 'px'
+        // 先读后写：值未变不触发 style invalidation
+        if (child.style.minHeight !== maxH + 'px') child.style.minHeight = maxH + 'px'
+        if (child2.style.minHeight !== maxH + 'px') child2.style.minHeight = maxH + 'px'
         height = maxH
       }
 
@@ -283,7 +311,7 @@ export function useVirtualScrollV2(opts: {
         })
       })
     }
-  }, [range.startIndex, range.endIndex, enabled, computeRange])
+  }, [range.startIndex, range.endIndex, enabled, computeRange, variableHeights, widthSignature])
 
   // Cleanup measurement rAF on unmount
   useEffect(() => {
