@@ -60,7 +60,7 @@ describe('isLineInReveal', () => {
 
 describe('findRowIndexByLineNumber', () => {
   it('优先 right.lineNumber（新文件）', () => {
-    const rows = [
+    const rows: DiffRow[] = [
       row(1), row(2),
       { type: 'modified', left: { lineNumber: 3, content: 'a', parts: [] }, right: { lineNumber: 3, content: 'b', parts: [] } },
       row(4),
@@ -88,7 +88,7 @@ describe('findSectionsForRange', () => {
   it('computeDiff 真实数据：远离变更的区间落在折叠段内', () => {
     const oldText = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`).join('\n')
     const newText = oldText.replace('line 20\n', 'line 20 CHANGED\n').replace('line 35\n', 'line 35 CHANGED\n')
-    const result = computeDiff(oldText, newText, { inlineDiffEnabled: false })
+    const result = computeDiff(oldText, newText, { inlineDiffEnabled: false, inlineDiffLineLimit: 2000, inlineDiffCharLimit: 20_000 })
     // showDiffOnly + contextLines=3：变更带之外被折叠；第 5~14 行应落在某折叠段
     const sections = findSectionsForRange(result.rows, true, 3, 5, 14)
     expect(sections.length).toBe(1)
