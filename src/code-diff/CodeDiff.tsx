@@ -34,7 +34,7 @@ import {
   findSectionsForRange,
   type RevealRange,
 } from './reveal'
-import { measureCharMetrics, visualWidth, type CharMetrics } from './char-metrics'
+import { measureCharMetrics, visualWidth } from './char-metrics'
 import './CodeDiff.css'
 
 const ASYNC_DIFF_THRESHOLD = 30_000
