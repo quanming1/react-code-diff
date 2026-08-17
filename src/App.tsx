@@ -117,7 +117,7 @@ function App() {
         revealLine={reveal?.line}
         revealEndLine={reveal ? reveal.end : undefined}
         revealNonce={reveal?.nonce}
-        style={{ flex: 1, minHeight: 0 }}
+        style={{ flex: '0 1 auto', minHeight: 0 }}
       />
     </div>
   )
