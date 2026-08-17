@@ -293,32 +293,52 @@ export function useVirtualScrollV2(opts: {
   }, [])
 
   // ── scrollToIndex ──
+  // 赋值可能被浏览器钳制为 0：目标 offset 超过当前 scrollHeight 时（如展开折叠段后
+  // totalHeight 尚未提交），scrollTop 赋值无效。校验落位结果，未达则下一帧重试。
   const scrollToIndex = useCallback(
     (index: number, align: 'center' | 'nearest' = 'center') => {
       const el = scrollRef.current
       const bit = bitRef.current
       if (!el || !bit) return
 
-      const total = totalRef.current
-      const clamped = Math.max(0, Math.min(total - 1, index))
+      const apply = (attempt: number) => {
+        const total = totalRef.current
+        const clamped = Math.max(0, Math.min(total - 1, index))
 
-      // If BIT is dirty (row count changed, not yet synced), use fallback uniform heights
-      const top = bitDirtyRef.current
-        ? clamped * defaultLineHeight
-        : (clamped > 0 ? bit.query(clamped - 1) : 0)
-      const h = bitDirtyRef.current ? defaultLineHeight : bit.get(clamped)
+        // If BIT is dirty (row count changed, not yet synced), use fallback uniform heights
+        const top = bitDirtyRef.current
+          ? clamped * defaultLineHeight
+          : (clamped > 0 ? bit.query(clamped - 1) : 0)
+        const h = bitDirtyRef.current ? defaultLineHeight : bit.get(clamped)
 
-      if (align === 'center') {
-        el.scrollTop = top - el.clientHeight / 2 + h / 2
-      } else {
-        const viewTop = el.scrollTop
-        const viewBottom = viewTop + el.clientHeight
-        if (top < viewTop) {
-          el.scrollTop = top
-        } else if (top + h > viewBottom) {
-          el.scrollTop = top + h - el.clientHeight
+        let target: number
+        if (align === 'center') {
+          target = top - el.clientHeight / 2 + h / 2
+        } else {
+          const viewTop = el.scrollTop
+          const viewBottom = viewTop + el.clientHeight
+          if (top < viewTop) {
+            target = top
+          } else if (top + h > viewBottom) {
+            target = top + h - el.clientHeight
+          } else {
+            return // 已可见，无需滚动
+          }
+        }
+
+        el.scrollTop = Math.max(0, target)
+        // 布局未提交导致钳制（目标 > 0 但落位 ≈ 0，或仍差得远）→ 下一帧重试（至多 10 帧）
+        const landed = el.scrollTop
+        if (
+          attempt < 10 &&
+          target > 1 &&
+          Math.abs(landed - Math.max(0, target)) > 1
+        ) {
+          requestAnimationFrame(() => apply(attempt + 1))
         }
       }
+
+      apply(0)
     },
     [scrollRef],
   )

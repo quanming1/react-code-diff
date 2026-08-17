@@ -27,6 +27,13 @@ import {
 // Virtual scroll: V2 uses ref+rAF (no re-render per scroll pixel) + BIT O(log n)
 // To revert to V1: replace the import below with './virtual' and useVirtualScrollV2 → useVirtualScroll
 import { useVirtualScrollV2 } from './virtual-v2'
+import {
+  normalizeRevealRange,
+  isLineInReveal,
+  findRowIndexByLineNumber,
+  findSectionsForRange,
+  type RevealRange,
+} from './reveal'
 import './CodeDiff.css'
 
 const ASYNC_DIFF_THRESHOLD = 30_000
@@ -58,6 +65,9 @@ export function CodeDiff(props: CodeDiffProps) {
     onSearchMatchChange,
     onDiffComputed,
     autoScrollToFirstChange = true,
+    revealLine,
+    revealEndLine,
+    revealNonce,
   } = props
 
   const [internalWrap, setInternalWrap] = useState(wrapLinesProp)
@@ -219,6 +229,12 @@ export function CodeDiff(props: CodeDiffProps) {
     if (newValue === '') return []
     return newValue.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   }, [newValue])
+
+  // ── 行号跳转与区间高亮（B1）：归一化区间，新文件行号 1-based ──
+  const revealRange = useMemo(
+    () => normalizeRevealRange(revealLine, revealEndLine, previewLines.length),
+    [revealLine, revealEndLine, previewLines.length]
+  )
 
   const scrollRef = useRef<HTMLDivElement>(null)
   const internalRatio = useRef<number | null>(null)
@@ -398,6 +414,9 @@ export function CodeDiff(props: CodeDiffProps) {
     },
     [viewMode, diffReady, visibleRows],
   )
+  // reveal 延迟跳转（双 rAF）时闭包会过期，经 ref 取最新实现
+  const findVisibleIndexRef = useRef(findVisibleIndex)
+  findVisibleIndexRef.current = findVisibleIndex
 
   const matches = useMemo(
     () => {
@@ -441,6 +460,54 @@ export function CodeDiff(props: CodeDiffProps) {
     })
     return () => cancelAnimationFrame(raf)
   }, [autoScrollToFirstChange, diffReady, viewMode, changeBlocks, findVisibleIndex])
+
+  // ── reveal 定位（B1）：revealLine/revealEndLine/revealNonce 变化时滚动到目标行 ──
+  // preview 直接按行号定位；diff 视图先展开覆盖区间的折叠段，再在下一次渲染后定位
+  // （双 rAF 等 setExpandedSections 提交 + rowHeights 重建完成）。
+  const lastRevealKeyRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    if (!revealRange) return
+    if (viewMode !== 'preview' && !diffReady) return
+    const key = `${revealRange.start}:${revealRange.end}:${revealNonce ?? 0}`
+    if (lastRevealKeyRef.current === key) return
+    lastRevealKeyRef.current = key
+
+    if (viewMode === 'preview' || !diffResult) {
+      const raf = requestAnimationFrame(() => {
+        scrollToIndexRef.current(revealRange.start - 1, 'center')
+      })
+      return () => cancelAnimationFrame(raf)
+    }
+
+    const oi = findRowIndexByLineNumber(diffResult.rows, revealRange.start)
+    if (oi < 0) return
+    const sections = findSectionsForRange(
+      diffResult.rows, showDiffOnly, contextLines, revealRange.start, revealRange.end,
+    )
+    let expanded = false
+    if (sections.length > 0) {
+      setExpandedSections(prev => {
+        if (sections.every(s => prev.has(s))) return prev
+        expanded = true
+        const next = new Set(prev)
+        sections.forEach(s => next.add(s))
+        return next
+      })
+    }
+    const jump = () => {
+      const vi = findVisibleIndexRef.current(oi)
+      if (vi >= 0) scrollToIndexRef.current(vi, 'center')
+    }
+    // 展开触发的重渲染需要一帧提交；双 rAF 兜底（未展开时一帧内即到位）
+    const raf = requestAnimationFrame(() => {
+      if (expanded) {
+        requestAnimationFrame(jump)
+      } else {
+        jump()
+      }
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [revealRange, revealNonce, viewMode, diffReady, diffResult, showDiffOnly, contextLines])
 
   const navigateMatch = useCallback(
     (dir: 'prev' | 'next') => {
@@ -693,6 +760,7 @@ export function CodeDiff(props: CodeDiffProps) {
                       matches={matches}
                       currentMatch={currentMatch}
                       onRowClick={handleRowClick}
+                      revealRange={revealRange}
                     />
                   )
                 })}
@@ -714,7 +782,7 @@ export function CodeDiff(props: CodeDiffProps) {
                       </div>
                     ) : (
                       <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} data-hover={hoveredRow === dr.originalIndex} onMouseEnter={() => setHoveredRow(dr.originalIndex)} onMouseLeave={() => setHoveredRow(null)} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
-                        <SideView side="left" rowType={dr.row.type} diffSide={dr.row.left} highlightLines={oldHighlight} lineNumber={dr.row.left?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
+                        <SideView side="left" rowType={dr.row.type} diffSide={dr.row.left} highlightLines={oldHighlight} lineNumber={dr.row.left?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} revealRange={revealRange} />
                       </div>
                     )
                   })}
@@ -728,7 +796,7 @@ export function CodeDiff(props: CodeDiffProps) {
                       <div key={`collapse-${dr.sectionId}-${vi}`} style={{ height: COLLAPSE_HEIGHT }} />
                     ) : (
                       <div key={`row-${dr.originalIndex}`} className="cd-row" data-type={dr.row.type} data-row-index={dr.originalIndex} data-hover={hoveredRow === dr.originalIndex} onMouseEnter={() => setHoveredRow(dr.originalIndex)} onMouseLeave={() => setHoveredRow(null)} onClick={() => handleRowClick(dr.row, dr.originalIndex)}>
-                        <SideView side="right" rowType={dr.row.type} diffSide={dr.row.right} highlightLines={newHighlight} lineNumber={dr.row.right?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} />
+                        <SideView side="right" rowType={dr.row.type} diffSide={dr.row.right} highlightLines={newHighlight} lineNumber={dr.row.right?.lineNumber ?? null} showLineNumbers={showLineNumbers} rowIndex={dr.originalIndex} matches={matches} currentMatch={currentMatch} revealRange={revealRange} />
                       </div>
                     )
                   })}
@@ -749,7 +817,7 @@ export function CodeDiff(props: CodeDiffProps) {
                     <span>{config.texts.showHidden.replace('{count}', String(dr.count))}</span>
                   </div>
                 ) : (
-                  <UnifiedRow key={`row-${dr.originalIndex}`} row={dr.row} rowIndex={dr.originalIndex} showLineNumbers={showLineNumbers} oldHighlight={oldHighlight} newHighlight={newHighlight} matches={matches} currentMatch={currentMatch} onRowClick={handleRowClick} />
+                  <UnifiedRow key={`row-${dr.originalIndex}`} row={dr.row} rowIndex={dr.originalIndex} showLineNumbers={showLineNumbers} oldHighlight={oldHighlight} newHighlight={newHighlight} matches={matches} currentMatch={currentMatch} onRowClick={handleRowClick} revealRange={revealRange} />
                 )
               })}
             </div>
@@ -944,6 +1012,7 @@ interface RowProps {
   matches: SearchMatch[]
   currentMatch: number
   onRowClick: (row: DiffRow, index: number) => void
+  revealRange?: RevealRange | null
 }
 
 
@@ -951,7 +1020,7 @@ interface RowProps {
 // --- Unified Row ---
 
 const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
-  const { row, rowIndex, showLineNumbers, oldHighlight, newHighlight, matches, currentMatch, onRowClick } = props
+  const { row, rowIndex, showLineNumbers, oldHighlight, newHighlight, matches, currentMatch, onRowClick, revealRange } = props
 
   if (row.type === 'modified' && row.left && row.right) {
     return (
@@ -967,6 +1036,7 @@ const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
             rowIndex={rowIndex}
             matches={matches}
             currentMatch={currentMatch}
+            revealRange={revealRange}
           />
         </div>
         <div className="cd-row" data-type="added">
@@ -980,6 +1050,7 @@ const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
             rowIndex={rowIndex}
             matches={matches}
             currentMatch={currentMatch}
+            revealRange={revealRange}
           />
         </div>
       </>
@@ -1004,6 +1075,7 @@ const UnifiedRow = memo(function UnifiedRow(props: RowProps) {
         rowIndex={rowIndex}
         matches={matches}
         currentMatch={currentMatch}
+        revealRange={revealRange}
       />
     </div>
   )
@@ -1019,10 +1091,11 @@ interface PreviewRowProps {
   matches: SearchMatch[]
   currentMatch: number
   onRowClick: (row: DiffRow, index: number) => void
+  revealRange?: RevealRange | null
 }
 
 const PreviewRow = memo(function PreviewRow(props: PreviewRowProps) {
-  const { line, lineIndex, highlightLines, showLineNumbers, matches, currentMatch, onRowClick } = props
+  const { line, lineIndex, highlightLines, showLineNumbers, matches, currentMatch, onRowClick, revealRange } = props
   const tokens = getTokenForLine(highlightLines, lineIndex)
   const segments = mergeSegments(
     line,
@@ -1048,7 +1121,7 @@ const PreviewRow = memo(function PreviewRow(props: PreviewRowProps) {
       data-row-index={lineIndex}
       onClick={() => onRowClick(previewRow, lineIndex)}
     >
-      <div className="cd-side cd-side-right" style={{ flex: '1 1 100%' }}>
+      <div className={`cd-side cd-side-right${isLineInReveal(revealRange, lineIndex + 1) ? ' cd-reveal-band' : ''}`} style={{ flex: '1 1 100%' }}>
         {showLineNumbers && (
           <div className="cd-gutter">
             <span className="cd-line-num">{lineIndex + 1}</span>
@@ -1077,10 +1150,11 @@ interface SideViewProps {
   rowIndex: number
   matches: SearchMatch[]
   currentMatch: number
+  revealRange?: RevealRange | null
 }
 
 const SideView = memo(function SideView(props: SideViewProps) {
-  const { side, rowType, diffSide, highlightLines, lineNumber, showLineNumbers, rowIndex, matches, currentMatch } = props
+  const { side, rowType, diffSide, highlightLines, lineNumber, showLineNumbers, rowIndex, matches, currentMatch, revealRange } = props
 
   if (!diffSide) {
     return (
@@ -1111,8 +1185,11 @@ const SideView = memo(function SideView(props: SideViewProps) {
   const sign =
     rowType === 'added' ? '+' : rowType === 'removed' ? '-' : rowType === 'modified' ? (side === 'left' ? '-' : '+') : ' '
 
+  // 高亮带只作用于新文件行（right 侧行号）；reveal 区间为新文件行号语义
+  const revealBand = side === 'right' && isLineInReveal(revealRange, lineNumber)
+
   return (
-    <div className={`cd-side cd-side-${side}`}>
+    <div className={`cd-side cd-side-${side}${revealBand ? ' cd-reveal-band' : ''}`}>
       {showLineNumbers && (
         <div className="cd-gutter">
           <span className="cd-line-num">{lineNumber ?? ''}</span>

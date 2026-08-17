@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Feature: line reveal & range highlight (B1) — new `revealLine` / `revealEndLine` / `revealNonce` props scroll the view to a target new-file line (centered) and paint a VSCode-style highlight band across the `[revealLine, revealEndLine]` range (line numbers bolded, 2px left accent, light/dark themes)
+- Feature: reveal auto-expands collapsed sections (`showDiffOnly`) covering the target range before jumping; works in preview / unified / split modes
+- Fix: `virtual-v2.scrollToIndex` assignment could be clamped to 0 when the scrollable height had not committed yet (e.g. right after expanding a collapsed section) — now verifies the landed offset and retries on subsequent frames (max 10)
+
 ## 1.2.0
 
 - Breaking: removed `LayoutConfig.gutterMinWidth` and `DiffConfig.ignoreWhitespace` config fields — update custom configs that set these

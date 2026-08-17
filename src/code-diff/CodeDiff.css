@@ -447,3 +447,29 @@
 .token.entity { color: var(--cd-token-entity); }
 .token.script-punctuation { color: var(--cd-token-script-punctuation); }
 .token.script { color: var(--cd-token-script); }
+
+
+/* ── B1: reveal 行号跳转与区间高亮（VSCode 风格）────────────────── */
+/* overlay 用 background-image 叠加在 .cd-code/.cd-gutter 自身底色之上，
+   不遮蔽 added/removed 配色；accent 用 inset 阴影画在区段左缘 */
+.cd-reveal-band {
+  box-shadow: inset 2px 0 0 #e6a817;
+}
+.cd-reveal-band .cd-code,
+.cd-reveal-band .cd-gutter {
+  background-image: linear-gradient(rgba(255, 199, 0, 0.16), rgba(255, 199, 0, 0.16));
+}
+.cd-reveal-band .cd-line-num {
+  color: #b07800;
+  font-weight: 600;
+}
+.cd-root[data-theme='dark'] .cd-reveal-band {
+  box-shadow: inset 2px 0 0 #d9a428;
+}
+.cd-root[data-theme='dark'] .cd-reveal-band .cd-code,
+.cd-root[data-theme='dark'] .cd-reveal-band .cd-gutter {
+  background-image: linear-gradient(rgba(255, 199, 95, 0.13), rgba(255, 199, 95, 0.13));
+}
+.cd-root[data-theme='dark'] .cd-reveal-band .cd-line-num {
+  color: #ffd479;
+}
