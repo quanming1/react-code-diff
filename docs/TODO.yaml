@@ -54,3 +54,13 @@ stages:
           - src/code-diff/CodeDiff.tsx
           - src/code-diff/CodeDiff.css
         acceptance: revealLine 滚动定位到目标行并居中；revealEndLine 形成 VSCode 风格高亮带（含行号槽）；目标行位于折叠区段时自动展开；vitest 新用例 + 全量回归通过
+
+      - id: B2
+        title: 移除滚动区人工撑高（短 diff 视口空白对齐真实内容）
+        status: in_progress
+        date: 2026-08-17
+        prd: docs/prd/PRD-B2-no-stretch.md
+        prd_status: approved
+        modules:
+          - src/code-diff/CodeDiff.tsx
+        acceptance: 三视图（preview/unified/split）滚动区高度=真实内容高（totalHeight<视口时不再人工撑满），行为无回归（vitest 全过 + demo 手动验证）
