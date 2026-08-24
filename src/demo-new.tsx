@@ -63,7 +63,7 @@ function EditorDemo() {
     setModelMarkers(model, 'demo', [{ severity: 'warning', message: 'demo warning', line: 3 }])
   }, [model])
   const [val, setVal] = React.useState('')
-  const editorRef = React.useRef<{ getValue(): string }>(null)
+  const editorRef = React.useRef<React.ComponentRef<typeof CodeEditor>>(null)
   return (
     <div style={{ height: 180 }}>
       <CodeEditor

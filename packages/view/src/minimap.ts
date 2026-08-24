@@ -78,8 +78,10 @@ export class Minimap {
   private _colorMap: Record<string, string> = { ...DEFAULT_COLORS }
   /** 拖动状态 */
   private _dragging = false
+  private readonly _cb: MinimapCallbacks
 
-  constructor(private readonly _cb: MinimapCallbacks, options: MinimapOptions = {}) {
+  constructor(cb: MinimapCallbacks, options: MinimapOptions = {}) {
+    this._cb = cb
     this._options = {
       enabled: options.enabled ?? true,
       renderCharacters: options.renderCharacters ?? true,

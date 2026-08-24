@@ -14,8 +14,11 @@ import { ViewLine } from './view-line'
 export class VisibleLinesCollection {
   private _lines: ViewLine[] = []
   private _rendLineNumberStart = 1
+  private readonly _lineFactory: () => ViewLine
 
-  constructor(private readonly _lineFactory: () => ViewLine = () => new ViewLine()) {}
+  constructor(lineFactory: () => ViewLine = () => new ViewLine()) {
+    this._lineFactory = lineFactory
+  }
 
   getStartLineNumber(): number {
     return this._rendLineNumberStart
