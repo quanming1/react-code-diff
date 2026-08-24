@@ -32,6 +32,13 @@ export default defineConfig({
           include: ['packages/core/src/**/__tests__/**/*.test.ts'],
         },
       },
+      {
+        test: {
+          name: 'tokenizer',
+          environment: 'node',
+          include: ['packages/tokenizer/src/**/__tests__/**/*.test.ts'],
+        },
+      },
     ],
   },
 })
