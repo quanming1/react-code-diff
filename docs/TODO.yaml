@@ -85,7 +85,7 @@ stages:
     steps:
       - id: D1
         title: monorepo 骨架 + 构建链（pnpm workspace / core 空包 / 工具链迁移）
-        status: in_progress
+        status: done
         prd: docs/prd/PRD-D1-monorepo-arch.md
         prd_status: 草稿
         modules:
@@ -97,7 +97,7 @@ stages:
 
       - id: D2
         title: core 数据层（自研可变文本模型 + 自研 diff 引擎 + 事件系统 + 撤销重做）
-        status: todo
+        status: done
         prd: docs/prd/PRD-D2-core-data-layer.md
         prd_status: 草稿
         modules:
@@ -111,7 +111,7 @@ stages:
 
       - id: D3
         title: tokenizer 包（全自研词法引擎 + 语言定义 + token 缓存）
-        status: todo
+        status: done
         prd: docs/prd/PRD-D3-tokenizer.md
         prd_status: 草稿
         modules:
@@ -123,7 +123,7 @@ stages:
 
       - id: D4
         title: view 命令式渲染层（行池 + 虚拟滚动 + 脏渲染 + 装饰 + gutter）
-        status: todo
+        status: done
         prd: docs/prd/PRD-D4-view-layer.md
         prd_status: 草稿
         modules:
@@ -137,7 +137,7 @@ stages:
 
       - id: D5
         title: 编辑能力（光标/选区/输入/IME + 撤销重做 UI）
-        status: todo
+        status: done
         prd: docs/prd/PRD-D5-editing.md
         prd_status: 草稿
         modules:
@@ -149,7 +149,7 @@ stages:
 
       - id: D6
         title: minimap + 概览（缩略图渲染 + 滚动同步 + diff 高亮 + 断点/诊断标记）
-        status: todo
+        status: done
         prd: docs/prd/PRD-D6-minimap.md
         prd_status: 草稿
         modules:
@@ -160,7 +160,7 @@ stages:
 
       - id: D7
         title: react 包（CodeDiff + CodeEditor 双组件 + setModel + tab 切换 + uri 模型注册表）
-        status: todo
+        status: done
         prd: docs/prd/PRD-D7-react-integration.md
         prd_status: 草稿
         modules:
@@ -172,7 +172,7 @@ stages:
 
       - id: D8
         title: 性能验收与发布（DOM 对比 / 切换耗时 / 滚动帧率 / 编辑延迟 / 迁移）
-        status: todo
+        status: done
         prd: docs/prd/PRD-D8-perf-acceptance.md
         prd_status: 草稿
         modules:

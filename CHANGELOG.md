@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased (2.0.0 — Monaco-style architecture rewrite, monorepo)
+
+- **Architecture**: full rewrite into a pnpm monorepo (`@cd/core` data layer, `@cd/tokenizer` self-built lexer, `@cd/view` imperative rendering, `@cd/react` public API) — data/rendering separation (Monaco-style `setModel`), all-zero runtime deps for core/tokenizer
+- **@cd/core**: mutable chunked text model (`applyEdits` batch editing, line hashes, `createModel` registry), self-built Myers diff engine (line-consistent with old `diff` package, no-newline-EOF semantics), Emitter/Event system, CursorsController (multi-cursor/selection), EditStack (undo/redo with same-direction merge)
+- **@cd/tokenizer**: rule-driven state-machine lexer (emit/push/pop + state stack for cross-line strings/comments/templates/JSX), 12 language definitions, line-level token cache with edit-incremental invalidation, theme mapping
+- **@cd/view**: `ViewLine` (dirty flags + input.equals short-circuit), Monaco-style `VisibleLinesCollection` (head/tail splice), BIT virtual scroll, `View.setModel` (tab-switch DOM reuse + object pool), DecorationStore (deltaDecorations), Gutter (line numbers + breakpoint/diagnostic glyphs), ViewCursors (synthetic cursor + selection overlay), InputHandler (keyboard/IME/clipboard → applyEdits + EditStack), Minimap (canvas thumbnail + viewport box + click-to-reveal), OverviewRuler (marker projection)
+- **@cd/react**: `CodeDiff` (props-compatible with 1.3.0), `CodeEditor` (Monaco-style API: model|value dual mode, undo/redo/focus/getValue/setValue, onChange/cursor events, minimap/gutter/readOnly), model registry (`createModel`/`getModel`/`setModelLanguage`/`disposeModel`), diagnostics API (`setModelMarkers` with owner isolation)
+- **Perf**: scroll avg frame 16ms / 0 jank frames (Large Data 2000 lines); DOM count = visible rows × constant (row pool reuse); data-source switch 40ms incl. diff recompute
+
 ## 1.3.0 (2026-08-17)
 
 - Feature: line reveal & range highlight (B1) — new `revealLine` / `revealEndLine` / `revealNonce` props scroll the view to a target new-file line (centered) and paint a VSCode-style highlight band across the `[revealLine, revealEndLine]` range (line numbers bolded, 2px left accent, light/dark themes)
