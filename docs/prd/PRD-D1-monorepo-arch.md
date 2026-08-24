@@ -458,3 +458,4 @@ setModelMarkers(model: TextModel, owner: string, markers: Marker[]): void
 | 2026-08-18 | **新增第 6 章「验收指标与测试用例明细」**：PERF-01~10 性能指标表（量化目标/样本/测量方法）、FUNC-01~16 功能指标表、COMP-01~04 兼容性指标表、TC-D1~D8 全量测试用例清单（48 条）、验收执行流程；第 5 章改为摘要入口 | 用户要求：验收指标与测试 case 单独成章、可执行可勾选 |
 | 2026-08-18 | D1 阶段实施：pnpm workspace 骨架 + @cd/core 空包 + 统一工具链（test/typecheck/build/lint:deps）+ vitest 多 project | D1 开发落地，TC-D1-01~04 验收通过（159 测试全绿、demo 不中断、依赖方向 lint 门禁生效） |
 | 2026-08-18 | D2 第一部分实施：可变文本模型（分块行缓冲 + applyEdits 逆序批量 + 行 hash + createModel 注册表雏形）+ Emitter/Event 事件系统 + Position/Range/Selection 类型 | FR2.1/2.3/2.6 落地，TC-D2-01/02/06 通过（34 core 测试全绿、tsc -b 零错误） |
+| 2026-08-18 | D2 第二部分实施：自研 diff 引擎（Myers O(ND) + prefix trim + no-newline-EOF 语义）+ 光标模型（CursorsController）+ 撤销重做栈（EditStack，同向合并） | FR2.2/2.4/2.5 落地，TC-D2-03（与旧 `diff` 包逐行一致）/04/05 通过（core 80 测试全绿、237 全量） |

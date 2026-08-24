@@ -1,8 +1,8 @@
-{
+﻿{
   "name": "@cd/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "@cd/core —— 数据层（文本模型 / diff 引擎 / 事件系统 / 光标 / 撤销重做），零运行时依赖",
+  "description": "@cd/core 鈥斺€?鏁版嵁灞傦紙鏂囨湰妯″瀷 / diff 寮曟搸 / 浜嬩欢绯荤粺 / 鍏夋爣 / 鎾ら攢閲嶅仛锛夛紝闆惰繍琛屾椂渚濊禆",
   "type": "module",
   "license": "MIT",
   "main": "./src/index.ts",
