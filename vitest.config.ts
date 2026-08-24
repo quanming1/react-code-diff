@@ -39,6 +39,13 @@ export default defineConfig({
           include: ['packages/tokenizer/src/**/__tests__/**/*.test.ts'],
         },
       },
+      {
+        test: {
+          name: 'view',
+          environment: 'jsdom',
+          include: ['packages/view/src/**/__tests__/**/*.test.ts'],
+        },
+      },
     ],
   },
 })

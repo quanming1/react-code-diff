@@ -1,0 +1,29 @@
+{
+  "name": "@cd/view",
+  "version": "0.1.0",
+  "private": true,
+  "description": "@cd/view —— 命令式渲染层（行池 / 虚拟滚动 / 脏渲染 / setModel / 三视图），依赖 @cd/core + @cd/tokenizer",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --project view"
+  },
+  "dependencies": {
+    "@cd/core": "workspace:*",
+    "@cd/tokenizer": "workspace:*"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}
