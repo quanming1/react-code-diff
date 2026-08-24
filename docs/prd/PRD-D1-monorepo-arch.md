@@ -288,7 +288,9 @@ setModelMarkers(model: TextModel, owner: string, markers: Marker[]): void
 - CSS 类名（`.cd-*`）保持兼容（消费端可能有定制样式覆盖）。
 - `CodeEditor` 为纯新增 API，不影响现有消费。
 
-## 5. 验收标准
+## 5. 验收标准（摘要）
+
+> 本章是验收的**执行入口**（每条 AC 可勾选）。量化指标与逐条测试用例的完整明细见 **第 6 章「验收指标与测试用例明细」**（指标表 + TC 用例表，按阶段编号）。
 
 - [ ] AC1：`pnpm install` 一次装齐；根 `pnpm test` / `pnpm typecheck` / `pnpm build` 全部通过（D1）。
 - [ ] AC2：core 包被 view 包 import 且 lint 通过；反向依赖被 lint 拒绝（D1）。
@@ -299,15 +301,153 @@ setModelMarkers(model: TextModel, owner: string, markers: Marker[]): void
 - [ ] AC7（D5）：可编辑文本、光标移动/选区/复制粘贴/undo-redo 快捷键/IME 中文输入正确（playwright 交互测试）；编辑后 diff 实时更新。
 - [ ] AC8（D6）：minimap 渲染正确、滚动同步、diff 高亮带/断点/诊断投影可见；点击/拖拽定位；overview ruler 正常。
 - [ ] AC9（D7）：桌面端 FileRenderer 换包后零代码改动跑通 CodeDiff；CodeEditor 可编辑 + 事件回调 + 模型注册表 + setModelMarkers 正常。
-- [ ] AC10（D8）：tab 切换 < 16ms；DOM 节点数 = 可见行 × 常量 ±10%；滚动帧 ≤ 17ms；输入延迟 < 50ms；vitest 全量通过；视觉回归一致。
+- [ ] AC10（D8）：PERF-01~10 全部达标（见 6.1）；FUNC-01~15 / COMP-01~03 全部通过；TC 全量绿。
 
-## 6. 测试计划
+## 6. 验收指标与测试用例明细
 
-- **core**（node vitest）：文本模型行访问/区间/applyEdits/大文件；diff 引擎与现实现逐行一致性快照；EditStack undo/redo 序列；CursorsController 移动/选择边界；Emitter 生命周期。
-- **tokenizer**（node vitest）：各语言规则样例（含跨行状态、嵌套、空行）；token 缓存命中/失效；编辑增量失效；注册表。
-- **view**（playwright）：行池复用断言（DOM 数恒定）；脏渲染（改一行只重建一行）；setModel 复用；三视图；光标/选区渲染；输入/IME；minimap 同步；gutter 标记。
-- **react**（playwright）：props 兼容矩阵；CodeEditor API 矩阵；tab 切换 demo；reveal/搜索/折叠回归。
-- **基准**（playwright 脚本）：FR8.1 指标采集，结果入 PR body。
+### 6.1 性能指标（PERF，量化目标）
+
+> 统一在 D8 验收；各前置阶段（D2~D7）自行预跑，不达标即回开发。测量环境：demo Large Data（2000 行 tsx，unified，Diff Only 关）；Chromium headless。
+
+| 编号 | 指标 | 目标值 | 样本/场景 | 测量方法 | 工具 | 对应 FR |
+|---|---|---|---|---|---|---|
+| PERF-01 | DOM 节点数 | = 可见行 × 常量 ±10% | 滚动全程（0→2000px→0） | 逐帧统计 `.view-line, .view-line *` 节点数，取 max；对比重构前基线 | playwright | FR4.1/FR8.2 |
+| PERF-02 | tab 切换耗时 | < 16ms（p95） | 两个 2000 行 model 来回切换 20 次 | `performance.now()` 包 `setModel()` + 下一帧渲染，取 p95 | playwright | FR4.6/FR8.2 |
+| PERF-03 | 滚动平均帧 | ≤ 17ms | 程序化滚动 2000px（100 帧） | rAF 帧间隔均值 | playwright | FR8.2 |
+| PERF-04 | 滚动卡顿帧 | 0 帧 > 25ms | 同上 | 帧间隔 >25ms 计数 | playwright | FR8.2 |
+| PERF-05 | 输入延迟 | < 50ms（p95） | 2000 行文件中部行输入 20 字符 | keydown → DOM 文本更新（MutationObserver）时间差 | playwright | FR5/FR8.2 |
+| PERF-06 | 首屏渲染 | < 100ms | 2000 行文件纯文本首帧 | 挂载 → 首次 paint（PerformanceObserver） | playwright | FR8.2 |
+| PERF-07 | 大文件交互 | 50K 行可流畅滚动 | 50K 行生成文件 | 滚动帧率 ≥ 50fps；无白屏 | playwright | FR2.1/FR8.2 |
+| PERF-08 | 单行编辑 tokenize | ≤ 2ms | 2000 行 tsx 中部行改 1 字符 | `performance.mark` 包 tokenize（增量路径） | playwright | FR3.3/FR5 |
+| PERF-09 | 编辑模式 diff 重算 | ≤ 30ms | 2000 行文件编辑 1 行，防抖 200ms 后 | `performance.mark` 包 computeDiff | playwright | FR2.2/FR5.4 |
+| PERF-10 | 内存/泄漏 | 10 次 setModel 后 DOM 数不回涨 | 反复切换 10 个 model | 切换前后 DOM 计数对比 + heap 粗采样 | playwright | FR4.6/FR7 |
+
+**失败处理**：任一 PERF 未达标 → PR 标记性能回归，回开发优化后重测；基准结果（前后对比表）必须附在对应 PR body。
+
+### 6.2 功能指标（FUNC，按能力域）
+
+| 编号 | 能力 | 通过标准 | 阶段 | 验证方式 |
+|---|---|---|---|---|
+| FUNC-01 | 三视图 | unified/split/preview 渲染正确、互相切换无异常 | D4 | playwright |
+| FUNC-02 | 折叠 | Diff Only 折叠段计数正确、点击展开/收起、reveal 自动展开 | D4 | playwright |
+| FUNC-03 | 搜索 | Ctrl+F 打开/聚焦、高亮、上下跳转、大小写切换、Esc 关闭 | D4 | playwright |
+| FUNC-04 | reveal | 跳转居中、区间高亮带、行号加粗、清除（nonce 重触发） | D4 | playwright |
+| FUNC-05 | 换行 | wrap 开/关渲染正确、横向滚动/纵向滚动正常 | D4 | playwright |
+| FUNC-06 | 编辑输入 | 字符/退格/删除/回车/Tab 正确落盘 | D5 | playwright |
+| FUNC-07 | IME | 中文拼音组合期不落盘、确认后一次落盘 | D5 | playwright |
+| FUNC-08 | 撤销/重做 | Ctrl+Z / Ctrl+Shift+Z 序列正确；连续输入合并为一次 undo；按钮 disabled 状态同步 | D5 | playwright |
+| FUNC-09 | 光标/选区 | 方向键移动、Shift 扩展选区、多光标、选区渲染（含反向选区） | D5 | playwright |
+| FUNC-10 | 编辑模式 diff | 编辑 new 侧后防抖 200ms diff 实时更新（行号/变更带） | D5 | playwright |
+| FUNC-11 | gutter | 行号正确；断点红点（glyph margin）、诊断错误/警告图标渲染；点击断点 toggle 事件 | D4 | playwright |
+| FUNC-12 | minimap | 渲染正确（token 色块）、滚动同步、点击/拖拽定位、视口框跟随 | D6 | playwright 截图+交互 |
+| FUNC-13 | minimap 投影 | diff 变更带 / 断点 / 诊断 / 搜索匹配点投影可见 | D6 | playwright |
+| FUNC-14 | overview ruler | 断点/诊断/搜索/光标投影、点击定位 | D6 | playwright |
+| FUNC-15 | 诊断注入 | `setModelMarkers` 注入 error/warning → 波浪线 + gutter 图标；owner 隔离（多来源不互清） | D7 | playwright |
+| FUNC-16 | 模型注册表 | createModel/getModel/setModelLanguage/disposeModel 生命周期正确；同名 uri 复用 | D7 | vitest |
+
+### 6.3 兼容性指标（COMP）
+
+| 编号 | 指标 | 通过标准 | 验证方式 |
+|---|---|---|---|
+| COMP-01 | CodeDiff props 兼容 | 1.3.0 全量 props 矩阵（含 revealLine/revealEndLine/revealNonce/renderToolbar/onLineClick 等）逐一可用 | playwright 断言 + 手动 |
+| COMP-02 | CSS 类名兼容 | `.cd-*` 类名保持（消费端样式覆盖不破）；`.cd-reveal-band` 等新类名正常 | playwright 断言 class |
+| COMP-03 | 桌面端零改动 | ftre-desktop FileRenderer 换包后：编译通过 + CodeDiff 功能手测通过 | 桌面端手测 |
+| COMP-04 | 视觉等价 | 重构前后 demo 截图对比（三视图 × 主题 × wrap）：无肉眼差异 | playwright 截图 diff |
+
+### 6.4 测试用例清单（TC）
+
+> 编号规则：TC-<阶段>-<序号>；类型：单测（node vitest）/ 交互（playwright）/ 基准（playwright 脚本）/ 手动。所有 TC 全绿 = 对应阶段可收尾。
+
+#### D1 骨架
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D1-01 | workspace 安装 | 根 `pnpm install` | 一次装齐，无 peer 冲突 | 命令 |
+| TC-D1-02 | 根命令覆盖 | `pnpm test` / `pnpm typecheck` / `pnpm build` | 全部通过（覆盖全部包） | 命令 |
+| TC-D1-03 | 依赖方向 lint | 故意在 view 包 import core 的反向链 | lint 拒绝（报错退出） | 单测 |
+| TC-D1-04 | 旧代码存活 | `npm run dev` | demo 照常运行、功能不变 | 手动 |
+
+#### D2 core 数据层
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D2-01 | 文本模型行访问 | 构造 10K 行模型；随机行读/区间读/行数 | 内容与行号正确；O(1)~O(log n) | 单测 |
+| TC-D2-02 | applyEdits | 区间替换/插入/删除（含跨行、文件尾、空区间） | 行结构与行 hash 增量正确 | 单测 |
+| TC-D2-03 | diff 一致性 | demo-edit-before/after、demo-large、空文本、单行 | 与现 `diff` 包输出逐行一致（快照） | 单测 |
+| TC-D2-04 | undo/redo 序列 | 10 步混合编辑；连续输入合并；undo 到空再 redo | 逐级还原正确；合并生效；undo/redo 状态事件 | 单测 |
+| TC-D2-05 | 光标模型 | 移动/越界钳制/多行跳转/选区反向 | 位置与选区正确 | 单测 |
+| TC-D2-06 | Emitter 生命周期 | 订阅/触发/取消/异常隔离 | 事件正确、取消后不再触发、异常不中断 | 单测 |
+
+#### D3 tokenizer
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D3-01 | 语言样例 | 12 种语言各代表样本 tokenize | 与 refractor 输出视觉等价（截图对比） | 截图 |
+| TC-D3-02 | 跨行状态 | 多行字符串/块注释/模板串/JSX 嵌套 | 续行着色正确、状态栈还原 | 单测 |
+| TC-D3-03 | 缓存命中 | 同内容行二次 tokenize | 命中缓存零重算（计数器断言） | 单测 |
+| TC-D3-04 | 编辑增量 | 中部行改 1 字符 | 仅受影响行重 tokenize，跨行链正确 | 单测 |
+
+#### D4 view 渲染层
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D4-01 | 行池复用 | 滚动 0→2000px→0 全程 | DOM 节点数恒定（PERF-01） | 基准 |
+| TC-D4-02 | 首尾 splice | 快速滚动跨越 500 行 | 仅首尾增减行（insert/delete 计数） | 交互 |
+| TC-D4-03 | 脏渲染 | 改一行数据（装饰/内容） | 仅该行 DOM 更新，其余不动 | 交互 |
+| TC-D4-04 | setModel | 切换 model A→B→A | 行池复用、内容正确、滚动复位/保持按配置 | 交互 |
+| TC-D4-05 | gutter | 注入断点/诊断到 3 行 | 红点/图标/行号正确渲染 | 交互 |
+| TC-D4-06 | 三视图切换 | unified↔split↔preview | 渲染正确、滚动各自独立 | 交互 |
+| TC-D4-07 | 装饰叠加 | reveal + 搜索 + 断点同区 | 三装饰共存不冲突 | 交互 |
+
+#### D5 编辑能力
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D5-01 | 字符输入 | 逐字输入 100 字符（含回车/Tab/退格） | 内容 + 渲染 + 光标正确 | 交互 |
+| TC-D5-02 | IME | 中文拼音组合输入（compositionstart/update/end） | 组合期不落盘、确认后一次落盘 | 交互 |
+| TC-D5-03 | 撤销重做快捷键 | Ctrl+Z ×5 / Ctrl+Shift+Z ×5 | 内容与光标逐步还原/重做 | 交互 |
+| TC-D5-04 | 选区操作 | Shift+方向 选 3 行 → Delete；Ctrl+X/Ctrl+V | 内容正确、undo 可还原 | 交互 |
+| TC-D5-05 | 编辑模式 diff | new 侧编辑 1 行 → 等待防抖 | diff 更新（行号/变更带/统计） | 交互 |
+| TC-D5-06 | 自动滚动 | 光标移出视口（PageDown 连按） | 视口跟随光标 | 交互 |
+| TC-D5-07 | 多光标 | 创建次要光标（Alt+Click）并输入 | 多位置同时插入、渲染正确 | 交互 |
+
+#### D6 minimap / ruler
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D6-01 | minimap 渲染 | 打开 minimap（2000 行 + 50K 行） | 色块正确、无白屏、canvas 尺寸合理 | 交互+截图 |
+| TC-D6-02 | 滚动同步 | 滚动主视图 | 视口框跟随、minimap 内容同步 | 交互 |
+| TC-D6-03 | 点击/拖拽定位 | 点击 minimap 中部 / 拖拽视口框 | 主视图跳转到对应位置 | 交互 |
+| TC-D6-04 | 投影 | 有 diff/断点/诊断/搜索时 | 各类色点/标记投影可见 | 交互 |
+| TC-D6-05 | overview ruler | 有断点/诊断/搜索/光标 | 投影正确、点击定位 | 交互 |
+| TC-D6-06 | minimap 性能 | 50K 行滚动 | 滚动帧率不因 minimap 明显下降（≥ 45fps） | 基准 |
+
+#### D7 react 包
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D7-01 | CodeDiff props 矩阵 | 1.3.0 全量 props 逐一生效 | 全部可用（COMP-01） | 交互 |
+| TC-D7-02 | CodeEditor 受控 | value + onChange 双向 | 外部改 value 同步、内部编辑回调 | 交互 |
+| TC-D7-03 | 模型注册表 | create/get/setLanguage/dispose 序列 | 生命周期正确、同名 uri 复用 | 单测 |
+| TC-D7-04 | 诊断渲染 | setModelMarkers 注入 error/warning | 波浪线 + gutter 图标 + owner 隔离 | 交互 |
+| TC-D7-05 | tab 切换 | 双 model 切换 20 次 | DOM 复用、耗时达标（PERF-02） | 基准 |
+| TC-D7-06 | 工具栏 | 搜索/折叠/视图/换行按钮 | 与 view 层命令联通 | 交互 |
+
+#### D8 验收
+
+| 编号 | 用例 | 步骤 | 预期 | 类型 |
+|---|---|---|---|---|
+| TC-D8-01 | 全量基准 | 跑 PERF-01~10 脚本 | 全部达标，数据入 PR | 基准 |
+| TC-D8-02 | 视觉回归 | 重构前后截图对比（三视图 × 主题 × wrap） | 无肉眼差异（COMP-04） | 截图 |
+| TC-D8-03 | 桌面端迁移 | ftre-desktop 换包 | 编译通过 + 功能手测通过（COMP-03） | 手动 |
+| TC-D8-04 | 全量 vitest | `pnpm test` | 全绿 | 命令 |
+| TC-D8-05 | 旧代码移除 | 删除 src/code-diff | 构建/测试无引用残留 | 命令 |
+
+### 6.5 验收执行流程
+
+1. 每个阶段收尾：跑本阶段 TC（单测 + 交互）→ 全绿 → PR 附 TC 结果表。
+2. D4/D5/D6 涉及性能指标的阶段：预跑对应 PERF，未达标回开发。
+3. D8 终验：PERF-01~10 + FUNC + COMP + TC 全量 → 结果表入发布 PR → 发布 2.0.0。
 
 ## 7. 变更记录
 
@@ -315,3 +455,4 @@ setModelMarkers(model: TextModel, owner: string, markers: Marker[]): void
 |---|---|---|
 | 2026-08-18 | 初始定稿 | 用户决策：全自研 + monorepo 分包（方案 A 拒绝，选方案 B 全自研） |
 | 2026-08-18 | **范围升级**：纳入编辑/光标/选区/撤销重做/minimap/断点诊断 gutter；新增 CodeEditor 组件、模型注册表、诊断 API；D 组重排为 D1-D8 | 用户决策：不做 Monaco 全功能 → 全都要，PRD 更宏伟 |
+| 2026-08-18 | **新增第 6 章「验收指标与测试用例明细」**：PERF-01~10 性能指标表（量化目标/样本/测量方法）、FUNC-01~16 功能指标表、COMP-01~04 兼容性指标表、TC-D1~D8 全量测试用例清单（48 条）、验收执行流程；第 5 章改为摘要入口 | 用户要求：验收指标与测试 case 单独成章、可执行可勾选 |
