@@ -46,6 +46,13 @@ export default defineConfig({
           include: ['packages/view/src/**/__tests__/**/*.test.ts'],
         },
       },
+      {
+        test: {
+          name: 'react',
+          environment: 'jsdom',
+          include: ['packages/react/src/**/__tests__/**/*.test.ts'],
+        },
+      },
     ],
   },
 })
