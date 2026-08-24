@@ -3,7 +3,6 @@
  * 保留旧对照：/ 走新 CodeDiff，/legacy 走旧组件（对比用）。
  */
 import React from 'react'
-import { createRoot } from 'react-dom/client'
 import { CodeDiff, CodeEditor, createModel, setModelMarkers } from '../packages/react/src/index'
 import largeFile from './demo-large?raw'
 import editBefore from './demo-edit-before.txt?raw'
@@ -13,7 +12,7 @@ const OLD_CODE = largeFile
 const NEW_CODE = largeFile
   .replace('import React, { Component } from "react";', 'import React, { Component, useMemo, useCallback } from "react";')
 
-function DemoApp() {
+export default function DemoApp() {
   const [viewMode, setViewMode] = React.useState<'unified' | 'split' | 'preview'>('unified')
   const [theme, setTheme] = React.useState<'light' | 'dark'>('light')
   const [useEditData, setUseEditData] = React.useState(true)
@@ -79,5 +78,3 @@ function EditorDemo() {
     </div>
   )
 }
-
-createRoot(document.getElementById('root')!).render(<DemoApp />)
