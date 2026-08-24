@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { TextModel, computeDiff, mappingsToRows } from '@cd/core'
 import { View, type ViewModelLike } from '@cd/view'
+import { ensureTokenCss } from './token-theme'
 
 export type ViewMode = 'unified' | 'split' | 'preview'
 export type Theme = 'light' | 'dark'
@@ -86,6 +87,11 @@ export function CodeDiff(props: CodeDiffProps) {
     [oldValue, newValue]
   )
   const rows = useMemo(() => mappingsToRows(diff), [diff])
+
+  // 主题变化 → 更新 token 色板（注入 style 内容）
+  useEffect(() => {
+    ensureTokenCss(theme)
+  }, [theme])
 
   // 挂载 View
   useEffect(() => {

@@ -12,5 +12,5 @@
 export { tokenizeLine, mergeTokens } from './lexer-engine'
 export type { LanguageDef, LexerRule, FlatToken, TokenType, TokenizeLineResult } from './lexer-engine'
 export { TokenCache } from './token-cache'
-export { tokenTypeToClass, tokenColors } from './theme'
+export { tokenTypeToClass, tokenColors, lightTokenColors, darkTokenColors, buildTokenCss } from './theme'
 export { registerLanguage, getLanguage, hasLanguage, listLanguages } from './lang'

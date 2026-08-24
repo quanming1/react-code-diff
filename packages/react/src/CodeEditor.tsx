@@ -12,6 +12,7 @@ import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
 import { TextModel, CursorsController, EditStack, type Selection, type Position } from '@cd/core'
 import { View, InputHandler, ViewCursors, Minimap, OverviewRuler, type ViewModelLike } from '@cd/view'
 import { getModelMarkers, severityToClass, type Marker } from './diagnostics'
+import { ensureTokenCss } from './token-theme'
 
 export interface CodeEditorProps {
   /** model 引用（与 value 二选一；优先） */
@@ -90,6 +91,11 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
       }
     }
   }, [modelProp])
+
+  // 主题变化 → 更新 token 色板
+  useEffect(() => {
+    ensureTokenCss(theme)
+  }, [theme])
 
   // 挂载 View
   useEffect(() => {
