@@ -79,3 +79,76 @@ stages:
           - src/code-diff/CodeDiff.tsx
           - src/code-diff/virtual-v2.ts
         acceptance: wrap 首次滚动平均帧耗时不高于不换行模式的 1.5 倍（demo Large Data 实测）；已收敛行在宽度未变时不重测；vitest 全量通过
+
+  - id: D
+    name: Monaco 式架构重构（monorepo 分包 + 数据渲染分离 + 全自研）
+    steps:
+      - id: D1
+        title: monorepo 骨架 + 构建链（pnpm workspace / core 空包 / 工具链迁移）
+        status: in_progress
+        prd: docs/prd/PRD-D1-monorepo-arch.md
+        prd_status: 草稿
+        modules:
+          - pnpm-workspace.yaml
+          - packages/core/package.json
+          - package.json（根 workspace 编排）
+          - vitest.config.ts / tsconfig 迁移
+        acceptance: pnpm install 一次装齐；core 包可被引用；根命令 test/typecheck/build 覆盖全部包；现有 src/code-diff 代码不受影响
+
+      - id: D2
+        title: core 数据层（自研文本模型 + 自研 diff 引擎 + 事件系统）
+        status: todo
+        prd: docs/prd/PRD-D2-core-data-layer.md
+        prd_status: 草稿
+        modules:
+          - packages/core/src/text-model.ts（分块行缓冲 + 行 hash）
+          - packages/core/src/diff-engine.ts（自研 Myers/启发式 diff）
+          - packages/core/src/event.ts（Emitter/Event 订阅）
+          - packages/core/src/types.ts
+        acceptance: 行访问/区间查询 O(log n)；diff 结果与现 `diff` 包在 demo 数据上逐行一致；vitest 全过
+
+      - id: D3
+        title: tokenizer 包（全自研词法引擎 + 语言定义 + token 缓存）
+        status: todo
+        prd: docs/prd/PRD-D3-tokenizer.md
+        prd_status: 草稿
+        modules:
+          - packages/tokenizer/src/lexer-engine.ts（规则驱动状态机）
+          - packages/tokenizer/src/lang/*.ts（typescript/javascript/jsx/tsx/json/css/html/markdown/bash/python…）
+          - packages/tokenizer/src/token-cache.ts（行 hash 缓存 + 跨行状态）
+          - packages/tokenizer/src/theme.ts（token type → CSS class）
+        acceptance: 核心语言高亮与 refractor 在代表性样本上视觉等价；跨行字符串/注释/模板正确；行级缓存命中不重算
+
+      - id: D4
+        title: view 命令式渲染层（行池 + 虚拟滚动 + 脏渲染 + 装饰）
+        status: todo
+        prd: docs/prd/PRD-D4-view-layer.md
+        prd_status: 草稿
+        modules:
+          - packages/view/src/view-line.ts（行 DOM 对象 + 脏标记）
+          - packages/view/src/visible-lines.ts（Monaco 风格行池：insert/delete 局部 splice）
+          - packages/view/src/view.ts（View 主类：setModel / 渲染循环 / 滚动）
+          - packages/view/src/renderer.ts（StringBuilder 拼 HTML）
+        acceptance: 滚动只平移不重建；行集合变化首尾局部换行；DOM 数量 = 可见行 × 常量；切换 model 复用 DOM 池
+
+      - id: D5
+        title: react 包（API 兼容壳 + setModel + tab 切换）
+        status: todo
+        prd: docs/prd/PRD-D5-react-integration.md
+        prd_status: 草稿
+        modules:
+          - packages/react/src/CodeDiff.tsx（对外主组件，props 与现 1.3.0 完全兼容）
+          - packages/react/src/use-view.ts（ref 挂载 View + props→setModel 映射）
+          - packages/react/src/toolbar.tsx（React UI 壳）
+        acceptance: 现有 API 零破坏（desktop 端 FileRenderer 直接换包可用）；tab 切换复用 DOM；diff 结果缓存
+
+      - id: D6
+        title: 性能验收与发布（DOM 对比 / 切换耗时 / 滚动帧率 / 迁移）
+        status: todo
+        prd: docs/prd/PRD-D6-perf-acceptance.md
+        prd_status: 草稿
+        modules:
+          - demo 迁移到 monorepo
+          - 基准：DOM 节点数 / tab 切换耗时 / 滚动帧率
+          - 桌面端消费迁移
+        acceptance: 基准数据入 PR；tab 切换 < 16ms；DOM 节点数 = 可见行 × 常量；功能等价回归通过
