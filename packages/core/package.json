@@ -1,6 +1,6 @@
 {
   "name": "@cd/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "@cd/core —— 数据层（文本模型 / diff 引擎 / 事件系统 / 光标 / 撤销重做），零运行时依赖",
   "type": "module",
