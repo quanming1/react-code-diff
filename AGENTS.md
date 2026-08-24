@@ -38,9 +38,10 @@ React code diff viewer with virtual scroll, split/unified/preview modes, syntax 
 ## Dev Commands
 
 - `npm run dev` — start demo app (App.tsx)
-- `npm run build:lib` — build library dist
-- `npm test` — run vitest
-- `npx tsc --noEmit` — typecheck
+- `npm run build:lib` — build library dist（当前单包 dist；D 组完成后迁移至 packages/react）
+- `npm test` — run vitest（多 project：legacy src + 各 packages）
+- `pnpm typecheck` — 全量类型检查（`tsc -b` + 各包 `tsc --noEmit`；注意根 tsconfig 是 solution 风格，`tsc --noEmit` 不追踪 references，勿用）
+- `pnpm lint` — oxlint + 依赖方向检查（scripts/check-deps.mjs：core ← tokenizer ← view ← react 单向）
 
 ## Publish Workflow
 

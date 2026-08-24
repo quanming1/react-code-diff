@@ -43,12 +43,14 @@
   ],
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "pnpm -r run build && tsc -b && vite build",
     "build:lib": "vite build --config vite.lib.config.ts",
-    "lint": "oxlint",
+    "lint": "oxlint && node scripts/check-deps.mjs",
+    "lint:deps": "node scripts/check-deps.mjs",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc -b && pnpm -r run typecheck"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

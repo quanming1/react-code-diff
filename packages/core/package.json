@@ -1,0 +1,23 @@
+{
+  "name": "@cd/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "@cd/core —— 数据层（文本模型 / diff 引擎 / 事件系统 / 光标 / 撤销重做），零运行时依赖",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --project core"
+  },
+  "dependencies": {}
+}
