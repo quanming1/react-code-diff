@@ -81,17 +81,22 @@ export class TokenCache {
     // 未命中：找最近有效快照行（进入状态已知的行）
     let replayFrom = i
     while (replayFrom > 0 && !this._lines[replayFrom]) replayFrom--
-    // replayFrom 的有效条目提供进入状态；若没有，从第 1 行开始
-    const startEntry = this._lines[replayFrom]
-    let stateStack = startEntry ? startEntry.endStateStack.slice() : [lang.start]
-    if (!startEntry && replayFrom === 0 && i > 0) {
-      // 第 1 行本身无效 → 从头
-      stateStack = [lang.start]
-      replayFrom = -1
+    // replayFrom 行（若有效且 hash 未变）提供「下一行」的进入状态
+    const replayEntry = this._lines[replayFrom]
+    let stateStack: string[]
+    let begin: number
+    if (replayEntry && replayEntry.hash === model.getLineHash(replayFrom + 1)) {
+      // replayFrom 有效 → 从 replayFrom+1 开始重放
+      stateStack = replayEntry.endStateStack.slice()
+      begin = replayFrom + 1
+    } else {
+      // replayFrom 无效（或没有）→ 从 replayFrom 本身开始，用其进入状态
+      stateStack = replayEntry ? replayEntry.stateStack.slice() : [lang.start]
+      begin = replayFrom
     }
 
-    // 从 replayFrom+1 重放到 line
-    for (let l = replayFrom + 1; l <= i; l++) {
+    // 从 begin 重放到 line
+    for (let l = begin; l <= i; l++) {
       const content = model.getLineContent(l + 1)
       const res = tokenizeLine(content, stateStack, lang)
       const entry: LineCacheEntry = {
