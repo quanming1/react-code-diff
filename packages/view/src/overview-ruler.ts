@@ -30,8 +30,10 @@ export class OverviewRuler {
   private _options: Required<OverviewRulerOptions>
   private _lineCount = 0
   private _markers: RulerMarker[] = []
+  private readonly _onRevealLine: (line: number) => void
 
-  constructor(private readonly _onRevealLine: (line: number) => void, options: OverviewRulerOptions = {}) {
+  constructor(onRevealLine: (line: number) => void, options: OverviewRulerOptions = {}) {
+    this._onRevealLine = onRevealLine
     this._options = {
       enabled: options.enabled ?? true,
       width: options.width ?? 10,

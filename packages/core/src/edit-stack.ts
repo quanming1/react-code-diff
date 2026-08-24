@@ -36,8 +36,10 @@ export class EditStack {
 
   private readonly _onDidChangeUndoRedoState: Emitter<UndoRedoState>
   readonly onDidChangeUndoRedoState: Event<UndoRedoState>
+  private readonly _model: TextModel
 
-  constructor(private readonly _model: TextModel) {
+  constructor(model: TextModel) {
+    this._model = model
     this._onDidChangeUndoRedoState = new Emitter()
     this.onDidChangeUndoRedoState = this._onDidChangeUndoRedoState.event
   }

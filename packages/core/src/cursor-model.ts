@@ -12,8 +12,10 @@ import { createSelection, getSelectionRange, type Position, type Selection } fro
 
 export class CursorsController {
   private _selections: Selection[] = []
+  private readonly _model: TextModel
 
-  constructor(private readonly _model: TextModel) {
+  constructor(model: TextModel) {
+    this._model = model
     // 初始：文件开头单光标
     this._selections = [createSelection({ line: 1, column: 1 }, { line: 1, column: 1 })]
   }

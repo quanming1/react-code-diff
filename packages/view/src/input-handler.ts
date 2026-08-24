@@ -40,12 +40,16 @@ export class InputHandler {
   private _readOnly: boolean
   private _compositionText = ''
   private _composing = false
+  private readonly _target: HTMLElement
+  private readonly _cb: InputHandlerCallbacks
 
   constructor(
-    private readonly _target: HTMLElement,
-    private readonly _cb: InputHandlerCallbacks,
+    target: HTMLElement,
+    cb: InputHandlerCallbacks,
     options: InputHandlerOptions = {},
   ) {
+    this._target = target
+    this._cb = cb
     this._readOnly = options.readOnly ?? false
   }
 
