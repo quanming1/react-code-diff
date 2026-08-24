@@ -40,6 +40,8 @@ export interface TokenProvider {
   getLineTokens(line: number, model: ViewModelLike): FlatToken[]
 }
 
+const GUTTER_WIDTH = 40
+
 export class View {
   private readonly _container: HTMLDivElement
   private readonly _linesContent: HTMLDivElement
@@ -76,15 +78,17 @@ export class View {
     this._linesContent.className = 'cd-view-lines'
     this._linesContent.style.position = 'absolute'
     this._linesContent.style.top = '0'
-    this._linesContent.style.left = '0'
-    this._linesContent.style.width = '100%'
+    this._linesContent.style.left = `${GUTTER_WIDTH}px`
+    this._linesContent.style.width = `calc(100% - ${GUTTER_WIDTH}px)`
     this._container.appendChild(this._linesContent)
 
     this._collection = new VisibleLinesCollection()
     this._tokenCache = new TokenCache()
     this._tokenCache.setLanguage(getLanguage(this._langId))
-    this._gutter = new Gutter()
+    this._gutter = new Gutter({ gutterWidth: GUTTER_WIDTH, lineNumbers: 'on' })
     this._gutter.getDomNode().style.display = 'none'
+    this._gutter.getDomNode().style.zIndex = '5'
+    this._gutter.getDomNode().style.background = 'var(--cd-bg, #fff)'
     this._container.appendChild(this._gutter.getDomNode())
 
     this._container.addEventListener('scroll', () => this._onScroll(), { passive: true })

@@ -27,6 +27,9 @@ export class ViewLine {
   constructor() {
     this._domNode = document.createElement('div')
     this._domNode.className = ViewLine.CLASS_NAME
+    this._domNode.style.height = '20px'
+    this._domNode.style.lineHeight = '20px'
+    this._domNode.style.whiteSpace = 'pre'
   }
 
   getDomNode(): HTMLDivElement {
