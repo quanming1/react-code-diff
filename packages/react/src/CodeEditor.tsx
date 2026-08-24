@@ -127,6 +127,10 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
   }, []) // 仅挂载一次
 
   // model 变化 → view.setModel + 编辑栈
+  // 回调经 ref 稳定引用，避免每次渲染重建 EditStack（否则 undo 栈被清空）
+  const cbRef = useRef({ onChange, onDidChangeCursorPosition, onDidChangeSelection })
+  cbRef.current = { onChange, onDidChangeCursorPosition, onDidChangeSelection }
+
   useEffect(() => {
     const view = viewRef.current
     const model = modelRef.current
@@ -136,13 +140,13 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     editStackRef.current = new EditStack(model)
     const handler = new InputHandler(containerRef.current!, {
       onDidEdit: (sels) => {
-        if (onChange) onChange(model.getValue())
-        onDidChangeSelection?.(sels[0])
+        if (cbRef.current.onChange) cbRef.current.onChange(model.getValue())
+        cbRef.current.onDidChangeSelection?.(sels[0])
         updateCursors(view, cursorsRef.current!, viewCursorsRef.current!, model)
       },
       onDidMoveCursor: (sels) => {
-        onDidChangeCursorPosition?.(sels[0].active)
-        onDidChangeSelection?.(sels[0])
+        cbRef.current.onDidChangeCursorPosition?.(sels[0].active)
+        cbRef.current.onDidChangeSelection?.(sels[0])
         updateCursors(view, cursorsRef.current!, viewCursorsRef.current!, model)
       },
       onUndoRedoStateChange: () => {},
@@ -152,7 +156,7 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function
     return () => {
       handler.detach()
     }
-  }, [modelRef.current, language, readOnly, onChange, onDidChangeCursorPosition, onDidChangeSelection])
+  }, [modelRef.current, language, readOnly])
 
   // value 受控（外部变化 → 同步 model）
   useEffect(() => {
