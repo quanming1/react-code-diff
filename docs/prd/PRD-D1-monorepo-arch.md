@@ -460,3 +460,4 @@ setModelMarkers(model: TextModel, owner: string, markers: Marker[]): void
 | 2026-08-18 | D2 第一部分实施：可变文本模型（分块行缓冲 + applyEdits 逆序批量 + 行 hash + createModel 注册表雏形）+ Emitter/Event 事件系统 + Position/Range/Selection 类型 | FR2.1/2.3/2.6 落地，TC-D2-01/02/06 通过（34 core 测试全绿、tsc -b 零错误） |
 | 2026-08-18 | D2 第二部分实施：自研 diff 引擎（Myers O(ND) + prefix trim + no-newline-EOF 语义）+ 光标模型（CursorsController）+ 撤销重做栈（EditStack，同向合并） | FR2.2/2.4/2.5 落地，TC-D2-03（与旧 `diff` 包逐行一致）/04/05 通过（core 80 测试全绿、237 全量） |
 | 2026-08-18 | D3 实施：@cd/tokenizer 全自研词法引擎（规则驱动状态机 emit/push/pop + 状态栈跨行）+ 12 语言定义 + 行级 token 缓存（编辑增量失效重放）+ 主题映射 | FR3.1~3.5 落地，TC-D3-01~04 通过（tokenizer 18 测试全绿、255 全量） |
+| 2026-08-18 | D4a 实施：@cd/view 命令式渲染核心——ViewLine（脏标记 + input.equals 短路）+ VisibleLinesCollection（Monaco 行池 insert/delete 语义）+ PrefixSum BIT 虚拟滚动 + View（setModel / rAF 渲染循环 / ViewLine 对象池复用 / 滚动平移） | FR4.1/4.2/4.3/4.6 落地，TC-D4-01/02/03/04 通过（view 18 测试全绿、273 全量）；首版正确优先，首尾局部 splice 留性能驱动优化 |
