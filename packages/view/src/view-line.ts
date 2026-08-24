@@ -49,6 +49,7 @@ export class ViewLine {
     this._isMaybeInvalid = false
     this._input = input
     this._domNode.innerHTML = renderLineHtml(input)
+    this._domNode.className = ViewLine.CLASS_NAME + (input.decorationClass ? ' ' + input.decorationClass : '')
     return true
   }
 

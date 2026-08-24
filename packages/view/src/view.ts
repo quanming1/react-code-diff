@@ -18,6 +18,7 @@ import { TokenCache, getLanguage, type FlatToken } from '@cd/tokenizer'
 import { VisibleLinesCollection } from './visible-lines'
 import { PrefixSum, computeVisibleRange, type VisibleRange } from './virtual'
 import { ViewLine } from './view-line'
+import { Gutter } from './gutter'
 
 export interface ViewOptions {
   /** 行高（px，等宽非 wrap 场景） */
@@ -54,8 +55,11 @@ export class View {
   private _range: VisibleRange = { startIndex: 0, endIndex: 0, offsetY: 0, totalHeight: 0 }
   private _rafId = 0
   private _disposables: Array<() => void> = []
-  /** 装饰签名回调（D4b 扩展） */
+  /** 装饰签名回调（D4b：reveal/搜索/断点/诊断） */
   private _decorationForLine: (line: number) => string = () => ''
+  /** gutter 实例（D4b） */
+  private readonly _gutter: Gutter
+  private _showGutter = false
 
   constructor(options: ViewOptions = {}) {
     this._options = {
@@ -78,6 +82,9 @@ export class View {
     this._collection = new VisibleLinesCollection()
     this._tokenCache = new TokenCache()
     this._tokenCache.setLanguage(getLanguage(this._langId))
+    this._gutter = new Gutter()
+    this._gutter.getDomNode().style.display = 'none'
+    this._container.appendChild(this._gutter.getDomNode())
 
     this._container.addEventListener('scroll', () => this._onScroll(), { passive: true })
   }
@@ -102,6 +109,28 @@ export class View {
     this._invalidateAll()
   }
 
+  /** 开关 gutter（行号槽 + glyph margin） */
+  setGutterEnabled(enabled: boolean, options: { lineNumbers?: 'on' | 'off' | 'relative'; glyphMargin?: boolean } = {}): void {
+    this._showGutter = enabled
+    this._gutter.getDomNode().style.display = enabled ? 'block' : 'none'
+    if (enabled) {
+      this._gutter.setOptions(options)
+      this._gutter.setLineCount(this.getLineCount())
+      this._gutter.setOffsetY(this._range.offsetY)
+    }
+  }
+
+  /** 设置某行断点/诊断 marker（glyph margin 图标） */
+  setGutterMarker(line: number, markerClass: string | null): void {
+    if (!this._showGutter) return
+    this._gutter.setMarker(line, markerClass)
+  }
+
+  /** 设置当前行（gutter 高亮） */
+  setCurrentLine(line: number): void {
+    this._gutter.setCurrentLine(line)
+  }
+
   /**
    * 设置 model（tab 切换核心）。
    * 清行池 → 全脏 → 重算可见行 → rAF 渲染；行池对象复用（容器不重建）。
@@ -122,6 +151,7 @@ export class View {
     this._collection.flush()
     this._invalidateAll()
     // 同步行池（建立可见行集合）
+    if (this._showGutter) this._gutter.setLineCount(this.getLineCount())
     this._onScroll()
 
     if (model) {
@@ -191,6 +221,7 @@ export class View {
     const newRange = computeVisibleRange(this._bit, scrollTop, viewportH, this._options.overscan)
     this._range = newRange
     this._syncCollection(newRange)
+    if (this._showGutter) this._gutter.setOffsetY(newRange.offsetY)
     this._scheduleRender()
   }
 
