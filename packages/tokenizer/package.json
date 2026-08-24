@@ -1,0 +1,25 @@
+{
+  "name": "@cd/tokenizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "@cd/tokenizer —— 全自研词法引擎（规则驱动状态机 + 语言定义 + 行级 token 缓存），零运行时依赖",
+  "type": "module",
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --project tokenizer"
+  },
+  "dependencies": {
+    "@cd/core": "workspace:*"
+  }
+}

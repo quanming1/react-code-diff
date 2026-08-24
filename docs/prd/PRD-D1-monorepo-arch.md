@@ -459,3 +459,4 @@ setModelMarkers(model: TextModel, owner: string, markers: Marker[]): void
 | 2026-08-18 | D1 阶段实施：pnpm workspace 骨架 + @cd/core 空包 + 统一工具链（test/typecheck/build/lint:deps）+ vitest 多 project | D1 开发落地，TC-D1-01~04 验收通过（159 测试全绿、demo 不中断、依赖方向 lint 门禁生效） |
 | 2026-08-18 | D2 第一部分实施：可变文本模型（分块行缓冲 + applyEdits 逆序批量 + 行 hash + createModel 注册表雏形）+ Emitter/Event 事件系统 + Position/Range/Selection 类型 | FR2.1/2.3/2.6 落地，TC-D2-01/02/06 通过（34 core 测试全绿、tsc -b 零错误） |
 | 2026-08-18 | D2 第二部分实施：自研 diff 引擎（Myers O(ND) + prefix trim + no-newline-EOF 语义）+ 光标模型（CursorsController）+ 撤销重做栈（EditStack，同向合并） | FR2.2/2.4/2.5 落地，TC-D2-03（与旧 `diff` 包逐行一致）/04/05 通过（core 80 测试全绿、237 全量） |
+| 2026-08-18 | D3 实施：@cd/tokenizer 全自研词法引擎（规则驱动状态机 emit/push/pop + 状态栈跨行）+ 12 语言定义 + 行级 token 缓存（编辑增量失效重放）+ 主题映射 | FR3.1~3.5 落地，TC-D3-01~04 通过（tokenizer 18 测试全绿、255 全量） |
