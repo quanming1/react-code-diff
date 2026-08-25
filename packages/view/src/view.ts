@@ -230,9 +230,13 @@ export class View {
     this._range = newRange
     this._syncCollection(newRange)
     if (this._showGutter) {
-      this._gutter.setOffsetY(newRange.offsetY)
-      // gutter 渲染可视区（含 overscan，与行池一致）
-      this._gutter.setVisibleRange(newRange.startIndex + 1, newRange.endIndex)
+      // gutter 用「无 overscan 的可见范围」：transform = 可见首行 offset，行号从可见首行开始
+      const bit = this._bit
+      const visibleStart = Math.max(0, bit.findIndex(scrollTop) + 1)
+      const visibleEnd = Math.min(this._model.getLineCount(), bit.findIndex(scrollTop + viewportH) + 1)
+      const visibleOffset = visibleStart > 0 ? bit.query(visibleStart - 1) : 0
+      this._gutter.setOffsetY(visibleOffset)
+      this._gutter.setVisibleRange(visibleStart + 1, visibleEnd)
     }
     this._scheduleRender()
   }

@@ -70,7 +70,7 @@ export class Gutter {
     this._render()
   }
 
-  /** 滚动同步（translateY） */
+  /** 滚动同步（translateY）——gutter 行号 = 可见首行 offset，行号内容跟随滚动 */
   setOffsetY(offsetY: number): void {
     this._domNode.style.transform = `translateY(${offsetY}px)`
   }
