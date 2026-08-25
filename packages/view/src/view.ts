@@ -156,7 +156,10 @@ export class View {
     this._collection.flush()
     this._invalidateAll()
     // 同步行池（建立可见行集合）
-    if (this._showGutter) this._gutter.setLineCount(this.getLineCount())
+    if (this._showGutter) {
+      this._gutter.setLineCount(this.getLineCount())
+      this._gutter.setVisibleRange(1, Math.min(this.getLineCount(), 30))
+    }
     this._onScroll()
 
     if (model) {
@@ -226,7 +229,11 @@ export class View {
     const newRange = computeVisibleRange(this._bit, scrollTop, viewportH, this._options.overscan)
     this._range = newRange
     this._syncCollection(newRange)
-    if (this._showGutter) this._gutter.setOffsetY(newRange.offsetY)
+    if (this._showGutter) {
+      this._gutter.setOffsetY(newRange.offsetY)
+      // gutter 渲染可视区（含 overscan，与行池一致）
+      this._gutter.setVisibleRange(newRange.startIndex + 1, newRange.endIndex)
+    }
     this._scheduleRender()
   }
 
