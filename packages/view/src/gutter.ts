@@ -20,6 +20,10 @@ export class Gutter {
   private _lineCount = 0
   private _currentLine = 0
   private readonly _markers = new Map<number, string>() // line → marker class
+  /** 可视区起始行（1-based；渲染只做可视区，避免全量 1458 行） */
+  private _startLine = 1
+  /** 可视区结束行（含） */
+  private _endLine = 0
 
   constructor(options: GutterOptions = {}) {
     this._options = {
@@ -66,9 +70,19 @@ export class Gutter {
     this._render()
   }
 
-  /** 滚动同步（translateY） */
+  /** 滚动同步（translateY）——gutter 行号 = 可见首行 offset，行号内容跟随滚动 */
   setOffsetY(offsetY: number): void {
     this._domNode.style.transform = `translateY(${offsetY}px)`
+  }
+
+  /** 设置可视区行范围（渲染只做 [start, end]；滚动时由 View 调用） */
+  setVisibleRange(startLine: number, endLine: number): void {
+    const s = Math.max(1, startLine)
+    const e = Math.min(this._lineCount, endLine)
+    if (s === this._startLine && e === this._endLine) return
+    this._startLine = s
+    this._endLine = e
+    this._render()
   }
 
   private _updateWidth(): void {
@@ -83,7 +97,8 @@ export class Gutter {
     const sb: string[] = []
     const mode = this._options.lineNumbers
     const glyphMargin = this._options.glyphMargin
-    for (let line = 1; line <= this._lineCount; line++) {
+    const end = this._endLine > 0 ? this._endLine : this._lineCount
+    for (let line = this._startLine; line <= end; line++) {
       const marker = this._markers.get(line)
       const isCurrent = line === this._currentLine
       const cls = ['cd-gutter-row']

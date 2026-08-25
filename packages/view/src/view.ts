@@ -73,7 +73,7 @@ export class View {
     this._container.className = 'cd-view'
     this._container.style.position = 'absolute'
     this._container.style.inset = '0'
-    this._container.style.overflow = 'hidden'
+    this._container.style.overflow = 'auto'
     this._linesContent = document.createElement('div')
     this._linesContent.className = 'cd-view-lines'
     this._linesContent.style.position = 'absolute'
@@ -156,7 +156,10 @@ export class View {
     this._collection.flush()
     this._invalidateAll()
     // 同步行池（建立可见行集合）
-    if (this._showGutter) this._gutter.setLineCount(this.getLineCount())
+    if (this._showGutter) {
+      this._gutter.setLineCount(this.getLineCount())
+      this._gutter.setVisibleRange(1, Math.min(this.getLineCount(), 30))
+    }
     this._onScroll()
 
     if (model) {
@@ -226,7 +229,15 @@ export class View {
     const newRange = computeVisibleRange(this._bit, scrollTop, viewportH, this._options.overscan)
     this._range = newRange
     this._syncCollection(newRange)
-    if (this._showGutter) this._gutter.setOffsetY(newRange.offsetY)
+    if (this._showGutter) {
+      // gutter 用「无 overscan 的可见范围」：transform = 可见首行 offset，行号从可见首行开始
+      const bit = this._bit
+      const visibleStart = Math.max(0, bit.findIndex(scrollTop) + 1)
+      const visibleEnd = Math.min(this._model.getLineCount(), bit.findIndex(scrollTop + viewportH) + 1)
+      const visibleOffset = visibleStart > 0 ? bit.query(visibleStart - 1) : 0
+      this._gutter.setOffsetY(visibleOffset)
+      this._gutter.setVisibleRange(visibleStart + 1, visibleEnd)
+    }
     this._scheduleRender()
   }
 
