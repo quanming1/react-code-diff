@@ -73,7 +73,7 @@ export class View {
     this._container.className = 'cd-view'
     this._container.style.position = 'absolute'
     this._container.style.inset = '0'
-    this._container.style.overflow = 'hidden'
+    this._container.style.overflow = 'auto'
     this._linesContent = document.createElement('div')
     this._linesContent.className = 'cd-view-lines'
     this._linesContent.style.position = 'absolute'
